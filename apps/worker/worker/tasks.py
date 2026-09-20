@@ -208,7 +208,7 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
                     {"amount": 1, "reason": type(exc).__name__},
                 )
 
-        _record_usage(session, job, output_bytes)
+        _record_usage(session, job, output_bytes, duration_ms)
 
         log_event(
             session, job, "completed",
@@ -276,7 +276,7 @@ def _engine_options(blob: dict[str, Any]) -> Any:
     )
 
 
-def _record_usage(session: Any, job: Job, bytes_out: int) -> None:
+def _record_usage(session: Any, job: Job, bytes_out: int, duration_ms: int = 0) -> None:
     """Roll the job into `usage_daily`.
 
     This is what an invoice and the account page are built from, and it has
@@ -301,6 +301,7 @@ def _record_usage(session: Any, job: Job, bytes_out: int) -> None:
     row.credits = (row.credits or 0) + (job.credits_charged or 0)
     row.bytes_in = (row.bytes_in or 0) + (job.source_bytes or 0)
     row.bytes_out = (row.bytes_out or 0) + bytes_out
+    row.compute_ms = (row.compute_ms or 0) + duration_ms
 
 
 def _fail_job(job_id: str, error_code: str, detail: str, *, unless: str | None = None) -> None:
@@ -393,6 +394,40 @@ def sweep_expired() -> dict[str, int]:
 
     with session_scope() as session:
         return {"purged": sweep(session)}
+
+
+@celery_app.task(name="worker.tasks.check_cost_anomaly")
+def check_cost_anomaly() -> dict[str, Any]:
+    """§8: does yesterday's compute look like the week before it?
+
+    Yesterday rather than today: a partial day is always "below average",
+    and an alert that cries wolf every morning is one nobody reads.
+    """
+    from datetime import date, timedelta
+
+    from app import costs
+
+    yesterday = date.today() - timedelta(days=1)
+    with session_scope() as session:
+        report = costs.report(session, yesterday)
+
+    log.info(
+        "cost check %s: %.0fs vs %.0fs baseline (%s)",
+        report.day,
+        report.compute_ms / 1000,
+        report.baseline_ms / 1000,
+        report.reason,
+    )
+    delivered = costs.notify(report.message()) if report.alerting else False
+    return {
+        "day": report.day.isoformat(),
+        "compute_ms": report.compute_ms,
+        "baseline_ms": round(report.baseline_ms),
+        "deviation": round(report.deviation, 4),
+        "alerting": report.alerting,
+        "delivered": delivered,
+        "reason": report.reason,
+    }
 
 
 @celery_app.task(name="worker.tasks.deliver_webhook", bind=True, max_retries=5)

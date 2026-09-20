@@ -61,6 +61,7 @@ celery_app.conf.update(
         "worker.tasks.vectorize_job": {"queue": QUEUE_SYNC},
         "worker.tasks.build_batch_zip": {"queue": QUEUE_BATCH},
         "worker.tasks.sweep_expired": {"queue": QUEUE_BATCH},
+        "worker.tasks.check_cost_anomaly": {"queue": QUEUE_BATCH},
         "worker.tasks.deliver_webhook": {"queue": QUEUE_BATCH},
     },
     # Recycling a child costs the *next* task its interpreter warm-up:
@@ -88,6 +89,13 @@ celery_app.conf.update(
         "sweep-expired": {
             "task": "worker.tasks.sweep_expired",
             "schedule": 900.0,
+        },
+        # §8: an 8-candidate search's failure mode is a large CPU bill, and
+        # the bill arrives a month after the mistake. Daily, on the batch
+        # lane, so it never sits in front of a preview.
+        "cost-anomaly": {
+            "task": "worker.tasks.check_cost_anomaly",
+            "schedule": 86_400.0,
         },
     },
 )

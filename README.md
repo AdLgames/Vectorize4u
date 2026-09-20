@@ -72,6 +72,7 @@ tune and debug it.
 | Deleted jobs are unreachable immediately | `app/retention.py` | `test_delete_purges_immediately` |
 | A session cannot be forged, replayed or downgraded | `app/auth.py` | 17 cases in `test_auth_supabase.py` |
 | Starting a checkout grants nothing; the webhook does | `app/routers/checkout.py` | `test_checkout_grants_nothing_on_its_own` |
+| A day that costs 15% more than the week before it gets noticed | daily check on the batch lane, `app/costs.py` | `test_cost_alerts.py` |
 | Usage billing cannot exceed 3× the plan price | `app/jobs.py: assert_can_afford`, `app/credits.py` | `test_the_cap_refuses_work_before_doing_it` |
 | A callback cannot be aimed at an internal service | re-validated at delivery in `worker/tasks.py` | `test_delivery_refuses_an_internal_destination` |
 | The published API docs match the served schema | `packages/shared/generate.py`, docs as data | `test_public_docs.py` |

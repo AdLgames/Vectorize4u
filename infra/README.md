@@ -42,6 +42,7 @@ VEC_STRIPE_WEBHOOK_SECRET whsec_…                 # API only
 VEC_IP_HASH_SECRET        <32+ random bytes>
 VEC_WEBHOOK_SIGNING_SECRET <32+ random bytes>
 VEC_PUBLIC_API_URL        https://api.example.com
+VEC_ALERT_WEBHOOK_URL     https://hooks.slack.com/services/…   # §8 cost alerts
 ```
 
 `VEC_IP_HASH_SECRET` does **not** need a rotation job: `ratelimit.ip_hash`
@@ -103,12 +104,15 @@ fly scale count worker=2 -c infra/fly.worker-batch.toml
 
 ## Not covered here
 
+- **Cost alerting is built but has no destination by default.** The daily
+  check runs on the batch lane and logs; set `VEC_ALERT_WEBHOOK_URL` to a
+  Slack incoming webhook to have it say so somewhere a person will see.
+
+
 - **The web app** is a Vercel project pointed at `apps/web`, with
   `NEXT_PUBLIC_API_BASE`, `NEXT_PUBLIC_SITE_URL` and the Supabase anon key
   set. Uploads never pass through it (§4.3), so its 4.5 MB body limit does
   not matter.
-- **Cost alerting** (§8: alert when daily compute deviates >15% from the
-  trailing 7-day average) is not built. The data is in `usage_daily`.
 - **A CDN in front of outputs** is deliberately absent. Every output is a
   unique file downloaded once, so there is no hit rate to win, and a
   path-keyed cache would serve deleted files past their retention — which

@@ -100,6 +100,17 @@ class Settings(BaseSettings):
 
     free_monthly_downloads: int = 3
 
+    # §8 cost guardrail. An 8-candidate search's failure mode is a large
+    # CPU bill, and the first sign is a day that does not look like the
+    # week before it. Empty means log-only, which is the right default for
+    # development and the wrong one for production.
+    alert_webhook_url: str = ""
+    cost_alert_deviation: float = 0.15
+    cost_alert_window_days: int = 7
+    # Below this much compute in a day, percentages are meaningless — two
+    # jobs against a baseline of one is a 100% deviation and nothing else.
+    cost_alert_floor_ms: int = 60_000
+
     @property
     def is_production(self) -> bool:
         return self.environment in ("staging", "prod")
