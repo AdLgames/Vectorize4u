@@ -26,7 +26,19 @@ const INTENT_PAGES = [
   "vector-art-for-embroidery-digitizing",
 ];
 
+// The guides and tools are their own family: shorter than an intent page,
+// and checked against each other rather than against a converter page.
+const GUIDES = [
+  "guides/prepare-a-logo-for-dtf-printing",
+  "guides/clean-up-a-low-res-logo",
+  "guides/fix-dxf-scale-in-lightburn",
+  "tools/svg-minifier",
+  "tools/svg-to-png",
+  "tools/palette-extractor",
+];
+
 const MIN_WORDS = 400;
+const MIN_WORDS_GUIDE = 250;
 const MAX_OVERLAP = 0.25;
 
 const failures = [];
@@ -64,7 +76,8 @@ const canonicals = new Map();
 const titles = new Map();
 const descriptions = new Map();
 
-for (const slug of INTENT_PAGES) {
+for (const slug of [...INTENT_PAGES, ...GUIDES]) {
+  const isGuide = GUIDES.includes(slug);
   let source;
   try {
     source = readFileSync(join(APP, slug, "page.tsx"), "utf8");
@@ -93,7 +106,8 @@ for (const slug of INTENT_PAGES) {
 
   const copy = copyOf(source);
   const words = copy.split(" ").filter(Boolean).length;
-  if (words < MIN_WORDS) fail(`${slug}: ${words} words of copy, want at least ${MIN_WORDS}`);
+  const floor = isGuide ? MIN_WORDS_GUIDE : MIN_WORDS;
+  if (words < floor) fail(`${slug}: ${words} words of copy, want at least ${floor}`);
 
   if (!/faq|Faq/.test(source)) fail(`${slug}: no FAQ block (the FAQPage JSON-LD needs one)`);
 
@@ -127,4 +141,4 @@ if (failures.length) {
   console.error("SEO page checks failed:\n" + failures.map((f) => `  - ${f}`).join("\n"));
   process.exit(1);
 }
-console.log(`SEO page checks passed for ${slugs.length} intent pages.`);
+console.log(`SEO page checks passed for ${slugs.length} pages.`);

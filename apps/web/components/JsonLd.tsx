@@ -64,3 +64,31 @@ export function Faq({ items }: { items: { question: string; answer: string }[] }
     </section>
   );
 }
+
+export function ArticleLd({
+  headline,
+  description,
+  slug,
+  published,
+}: {
+  headline: string;
+  description: string;
+  slug: string;
+  published: string;
+}) {
+  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vectorize4u.example";
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline,
+    description,
+    datePublished: published,
+    dateModified: published,
+    mainEntityOfPage: { "@type": "WebPage", "@id": `${site}${slug}` },
+    author: { "@type": "Organization", name: "Vectorize4u" },
+    publisher: { "@type": "Organization", name: "Vectorize4u" },
+  };
+  return (
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />
+  );
+}

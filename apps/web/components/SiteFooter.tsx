@@ -18,6 +18,7 @@ export const CONVERSION_PAGES = [
 ];
 
 const OTHER = [
+  { href: "/guides", label: "Guides" },
   { href: "/batch", label: "Batch conversion" },
   { href: "/api", label: "API docs" },
   { href: "/account", label: "Account" },

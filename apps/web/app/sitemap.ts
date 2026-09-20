@@ -28,6 +28,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     { url: `${SITE}/api`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE}/guides`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    {
+      url: `${SITE}/guides/prepare-a-logo-for-dtf-printing`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
+      url: `${SITE}/guides/clean-up-a-low-res-logo`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
+      url: `${SITE}/guides/fix-dxf-scale-in-lightburn`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
     { url: `${SITE}/tools`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     {
       url: `${SITE}/tools/svg-minifier`,
