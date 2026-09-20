@@ -103,7 +103,7 @@ export default function SiteHeader() {
                 height: 26,
                 borderRadius: "var(--radius-full)",
                 background: "var(--cyan-soft)",
-                color: "var(--cyan)",
+                color: "var(--cyan-strong)",
                 display: "grid",
                 placeItems: "center",
                 fontSize: "var(--text-xs)",

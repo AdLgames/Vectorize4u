@@ -14,7 +14,13 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # 3.11, because that is what the production images run
+          # (python:3.11-slim) and what mypy is configured for. On 3.12 the
+          # runner installs numpy stubs written in 3.12 syntax, which mypy
+          # then refuses under `python_version = "3.11"` — CI testing a
+          # different interpreter from the one we ship is how that kind of
+          # mismatch gets discovered at the wrong time.
+          python-version: "3.11"
 
       # The API tests run the real engine, so the tracer binaries are
       # required here too, pinned for the same reason as in engine.yml.
@@ -83,6 +89,11 @@ jobs:
       # §9: the intent pages must stay genuinely different from each other.
       - name: Doorway-page guard
         run: cd apps/web && npm run check-seo
+
+      # Tokens too light to carry text must not carry text. Cheaper to
+      # catch here than in a Lighthouse run four minutes later.
+      - name: Contrast guard
+        run: cd apps/web && npm run check-contrast
 
       - name: Build
         run: cd apps/web && npm run build

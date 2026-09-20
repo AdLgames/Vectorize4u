@@ -35,10 +35,20 @@ on:
         type: string
         default: chess-930
       prefix:
-        description: App name prefix (<prefix>-api, <prefix>-worker-preview, …)
+        description: >-
+          App name prefix (<prefix>-api, <prefix>-worker-preview, …). Fly app
+          names are globally unique across every account, so a plain word is
+          usually already taken by a stranger.
         required: true
         type: string
-        default: vectorize
+        default: vectorize4u
+      db_app:
+        description: >-
+          Existing Postgres app to attach to. Separate from the prefix so
+          changing the prefix does not silently create a second database.
+        required: true
+        type: string
+        default: vectorize-db
 
 concurrency:
   group: deploy
@@ -51,7 +61,7 @@ env:
   # five files.
   API_APP: ${{ inputs.prefix }}-api
   REDIS_APP: ${{ inputs.prefix }}-redis
-  DB_APP: ${{ inputs.prefix }}-db
+  DB_APP: ${{ inputs.db_app }}
   WORKER_APPS: ${{ inputs.prefix }}-worker-preview ${{ inputs.prefix }}-worker-sync ${{ inputs.prefix }}-worker-batch
 
 jobs:
@@ -62,13 +72,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Which organisation is this token in
+        run: |
+          # Printed first because every "app not found" three steps later
+          # is really this: the wrong org, or a name another account holds.
+          flyctl orgs list
+
       - name: Create the apps
         run: |
-          set -u
+          # pipefail matters here: without it the exit status of
+          # `cmd | tee` is tee's, so a real failure (wrong org, name taken
+          # by another account) is swallowed and surfaces three steps later
+          # as something unrelated.
+          set -u -o pipefail
           for app in "$API_APP" "$REDIS_APP" $WORKER_APPS; do
-            # Already existing is the expected outcome on a re-run.
-            flyctl apps create "$app" --org "${{ inputs.org }}" 2>&1 | tee /tmp/out || \
-              grep -qi "already" /tmp/out
+            if flyctl apps create "$app" --org "${{ inputs.org }}" 2>&1 | tee /tmp/out; then
+              echo "created $app"
+            elif grep -qiE "already|taken|exists" /tmp/out; then
+              echo "$app already exists — fine"
+            else
+              echo "could not create $app:"
+              cat /tmp/out
+              exit 1
+            fi
           done
           flyctl apps list
 
@@ -80,6 +106,7 @@ jobs:
           else
             flyctl postgres create \
               --name "$DB_APP" \
+              --org "${{ inputs.org }}" \
               --region "${{ inputs.region }}" \
               --initial-cluster-size 1 \
               --vm-size shared-cpu-1x \
@@ -90,9 +117,17 @@ jobs:
           # credits and usage, so they need it too — and app/config.py
           # adopts DATABASE_URL and renames the driver, so nobody copies a
           # connection string by hand.
+          set -o pipefail
           for app in "$API_APP" $WORKER_APPS; do
-            flyctl postgres attach "$DB_APP" -a "$app" --yes 2>&1 | tee /tmp/attach || \
-              grep -qiE "already|exists" /tmp/attach
+            if flyctl postgres attach "$DB_APP" -a "$app" --yes 2>&1 | tee /tmp/attach; then
+              echo "attached $DB_APP to $app"
+            elif grep -qiE "already|exists|duplicate" /tmp/attach; then
+              echo "$app is already attached — fine"
+            else
+              echo "could not attach the database to $app:"
+              cat /tmp/attach
+              exit 1
+            fi
           done
 
       - name: Generate the secrets nobody should have to invent

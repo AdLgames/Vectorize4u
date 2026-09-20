@@ -14,7 +14,13 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # 3.11, because that is what the production images run
+          # (python:3.11-slim) and what mypy is configured for. On 3.12 the
+          # runner installs numpy stubs written in 3.12 syntax, which mypy
+          # then refuses under `python_version = "3.11"` — CI testing a
+          # different interpreter from the one we ship is how that kind of
+          # mismatch gets discovered at the wrong time.
+          python-version: "3.11"
 
       # Tracer binaries are not pip-installable and every score depends on
       # their exact versions. Pin them: a vtracer bump changes geometry, and

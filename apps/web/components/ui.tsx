@@ -271,7 +271,7 @@ export function Field({
       </label>
       {children}
       {hint && (
-        <p style={{ fontSize: "var(--text-xs)", color: "var(--ink-400)", margin: 0 }}>{hint}</p>
+        <p style={{ fontSize: "var(--text-xs)", color: "var(--ink-500)", margin: 0 }}>{hint}</p>
       )}
     </div>
   );

@@ -57,7 +57,7 @@ export default function AdjustPanel({
         }}
       >
         <span>Adjust the trace</span>
-        <span style={{ color: "var(--ink-400)", fontWeight: 400 }}>
+        <span style={{ color: "var(--ink-500)", fontWeight: 400 }}>
           {open ? "Hide" : `${colors} colours, detail ${detailIndex}`}
         </span>
       </button>

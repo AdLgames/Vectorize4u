@@ -8,6 +8,17 @@ import Link from "next/link";
  * for. One place, so a new page is linked everywhere the moment it exists.
  */
 
+// Next prefetches every <Link> that scrolls into view. Thirteen footer
+// links is thirteen RSC payloads plus their chunks on every page, for
+// navigation nobody is about to make: 22 KB and six requests, measured.
+//
+// It does *not* measurably change LCP — that was the first guess when the
+// CI budget failed, and it was wrong (2076 ms with prefetch, 2082 ms
+// without). It is off because the bytes are waste, not because it was the
+// culprit. The header keeps its prefetch: five links, and they are the
+// ones people actually click next.
+const PREFETCH = false;
+
 export const CONVERSION_PAGES = [
   { href: "/png-to-svg", label: "PNG to SVG" },
   { href: "/jpg-to-svg", label: "JPG to SVG" },
@@ -72,7 +83,7 @@ export default function SiteFooter() {
         <div style={columnStyle}>
           <h2 style={headingStyle}>Convert</h2>
           {CONVERSION_PAGES.map((page) => (
-            <Link key={page.href} href={page.href} style={linkStyle}>
+            <Link key={page.href} href={page.href} prefetch={PREFETCH} style={linkStyle}>
               {page.label}
             </Link>
           ))}
@@ -80,7 +91,7 @@ export default function SiteFooter() {
         <div style={columnStyle}>
           <h2 style={headingStyle}>Free tools</h2>
           {TOOLS.map((page) => (
-            <Link key={page.href} href={page.href} style={linkStyle}>
+            <Link key={page.href} href={page.href} prefetch={PREFETCH} style={linkStyle}>
               {page.label}
             </Link>
           ))}
@@ -88,7 +99,7 @@ export default function SiteFooter() {
         <div style={columnStyle}>
           <h2 style={headingStyle}>Product</h2>
           {OTHER.map((page) => (
-            <Link key={page.href} href={page.href} style={linkStyle}>
+            <Link key={page.href} href={page.href} prefetch={PREFETCH} style={linkStyle}>
               {page.label}
             </Link>
           ))}

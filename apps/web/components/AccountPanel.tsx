@@ -70,7 +70,7 @@ export default function AccountPanel() {
           <Muted size="xs">Downloads this month</Muted>
           <div style={{ fontSize: "var(--text-h2)", fontWeight: 600, color: "var(--ink-900)" }}>
             {plan ? plan.amount - plan.remaining : 0}{" "}
-            <span style={{ fontSize: "var(--text-sm)", color: "var(--ink-400)", fontWeight: 400 }}>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--ink-500)", fontWeight: 400 }}>
               of {plan?.amount ?? 0}
             </span>
           </div>
@@ -94,7 +94,7 @@ export default function AccountPanel() {
           <Muted size="xs">Credit pack balance</Muted>
           <div style={{ fontSize: "var(--text-h2)", fontWeight: 600, color: "var(--ink-900)" }}>
             {pack?.remaining ?? 0}{" "}
-            <span style={{ fontSize: "var(--text-sm)", color: "var(--ink-400)", fontWeight: 400 }}>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--ink-500)", fontWeight: 400 }}>
               of {pack?.amount ?? 0}
             </span>
           </div>
