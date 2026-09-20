@@ -35,10 +35,20 @@ on:
         type: string
         default: chess-930
       prefix:
-        description: App name prefix (<prefix>-api, <prefix>-worker-preview, …)
+        description: >-
+          App name prefix (<prefix>-api, <prefix>-worker-preview, …). Fly app
+          names are globally unique across every account, so a plain word is
+          usually already taken by a stranger.
         required: true
         type: string
-        default: vectorize
+        default: vectorize4u
+      db_app:
+        description: >-
+          Existing Postgres app to attach to. Separate from the prefix so
+          changing the prefix does not silently create a second database.
+        required: true
+        type: string
+        default: vectorize-db
 
 concurrency:
   group: deploy
@@ -51,7 +61,7 @@ env:
   # five files.
   API_APP: ${{ inputs.prefix }}-api
   REDIS_APP: ${{ inputs.prefix }}-redis
-  DB_APP: ${{ inputs.prefix }}-db
+  DB_APP: ${{ inputs.db_app }}
   WORKER_APPS: ${{ inputs.prefix }}-worker-preview ${{ inputs.prefix }}-worker-sync ${{ inputs.prefix }}-worker-batch
 
 jobs:
@@ -61,6 +71,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Which organisation is this token in
+        run: |
+          # Printed first because every "app not found" three steps later
+          # is really this: the wrong org, or a name another account holds.
+          flyctl orgs list
 
       - name: Create the apps
         run: |
