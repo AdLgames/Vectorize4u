@@ -1,0 +1,186 @@
+{
+  "engine_version": "0.1.0+7242dd01c9c6",
+  "images": {
+    "alpha_binary": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 3773,
+      "fidelity": 0.84744,
+      "label": "LOGO_FLAT",
+      "nodes": 177,
+      "paths": 5,
+      "total": 0.79054,
+      "warnings": [
+        "source_resolution_low",
+        "physical_size_assumed"
+      ]
+    },
+    "alpha_dark_straight": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 3666,
+      "fidelity": 0.99433,
+      "label": "LOGO_FLAT",
+      "nodes": 9,
+      "paths": 1,
+      "total": 0.93905,
+      "warnings": [
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "alpha_premultiplied": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 3528,
+      "fidelity": 0.99417,
+      "label": "LOGO_FLAT",
+      "nodes": 9,
+      "paths": 1,
+      "total": 0.92632,
+      "warnings": [
+        "alpha_premultiplied_fixed",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "cmyk_jpeg": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 4941,
+      "fidelity": 0.99907,
+      "label": "LOGO_FLAT",
+      "nodes": 1168,
+      "paths": 5,
+      "total": 0.90522,
+      "warnings": [
+        "cmyk_converted",
+        "source_resolution_low",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "exif_rotated": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 4199,
+      "fidelity": 0.99272,
+      "label": "LOGO_FLAT",
+      "nodes": 995,
+      "paths": 5,
+      "total": 0.90015,
+      "warnings": [
+        "exif_rotated",
+        "source_resolution_low",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "line_art": {
+      "classification": "LINE_ART",
+      "elapsed_ms": 5998,
+      "fidelity": 0.96694,
+      "label": "LINE_ART",
+      "nodes": 205,
+      "paths": 1,
+      "total": 0.90569,
+      "warnings": [
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "logo_flat": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 5183,
+      "fidelity": 0.98449,
+      "label": "LOGO_FLAT",
+      "nodes": 27,
+      "paths": 5,
+      "total": 0.91934,
+      "warnings": [
+        "physical_size_assumed"
+      ]
+    },
+    "logo_flat_jpeg_artifacts": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 5839,
+      "fidelity": 0.98029,
+      "label": "LOGO_FLAT",
+      "nodes": 29,
+      "paths": 5,
+      "total": 0.91599,
+      "warnings": [
+        "physical_size_assumed"
+      ]
+    },
+    "logo_flat_small": {
+      "classification": "LOGO_FLAT",
+      "elapsed_ms": 1464,
+      "fidelity": 0.9993,
+      "label": "LOGO_FLAT",
+      "nodes": 594,
+      "paths": 5,
+      "total": 0.90523,
+      "warnings": [
+        "source_resolution_low",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "logo_gradient": {
+      "classification": "LOGO_GRADIENT",
+      "elapsed_ms": 5312,
+      "fidelity": 0.90064,
+      "label": "LOGO_GRADIENT",
+      "nodes": 175,
+      "paths": 12,
+      "total": 0.83033,
+      "warnings": [
+        "gradients_banded",
+        "source_resolution_low",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "photo": {
+      "classification": "PHOTO",
+      "elapsed_ms": 27464,
+      "fidelity": 0.65842,
+      "label": "PHOTO",
+      "nodes": 86776,
+      "paths": 8646,
+      "total": 0.58177,
+      "warnings": [
+        "photo_input",
+        "simplify_skipped_large",
+        "physical_size_assumed"
+      ]
+    },
+    "screenshot": {
+      "classification": "SCREENSHOT",
+      "elapsed_ms": 5908,
+      "fidelity": 0.87928,
+      "label": "SCREENSHOT",
+      "nodes": 3444,
+      "paths": 289,
+      "total": 0.76495,
+      "warnings": [
+        "low_confidence_classification",
+        "preprocess_backed_off",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    },
+    "sketch": {
+      "classification": "SKETCH",
+      "elapsed_ms": 5619,
+      "fidelity": 0.8082,
+      "label": "SKETCH",
+      "nodes": 709,
+      "paths": 1,
+      "total": 0.76195,
+      "warnings": [
+        "preprocess_backed_off",
+        "simplify_stopped_early",
+        "physical_size_assumed"
+      ]
+    }
+  },
+  "score_version": "s3",
+  "tier": "standard"
+}

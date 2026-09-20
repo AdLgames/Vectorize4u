@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vectorize-worker"
+version = "0.1.0"
+description = "Celery worker: runs the engine, three queue lanes."
+requires-python = ">=3.11"
+dependencies = [
+    "celery[redis]>=5.4",
+    "redis>=5.2",
+    "vectorize-engine",
+    "vectorize-api",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
+
+[tool.setuptools.packages.find]
+include = ["worker*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = false
+# Celery's task decorator is untyped, so every task body would be reported
+# as "untyped by decorator". The bodies themselves are annotated and are
+# type-checked; only the decorator's own signature is unknown.
+disable_error_code = ["untyped-decorator"]

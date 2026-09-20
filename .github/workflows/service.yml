@@ -1,0 +1,89 @@
+name: service
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The API tests run the real engine, so the tracer binaries are
+      # required here too, pinned for the same reason as in engine.yml.
+      - name: Cache cargo binaries
+        id: cargo-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: tracers-vtracer0.6.5-resvg0.48.1
+
+      - name: Install vtracer and resvg
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        run: cargo install vtracer --version 0.6.5 --locked
+          && cargo install resvg --version 0.48.1 --locked
+
+      - name: Install potrace
+        run: sudo apt-get update && sudo apt-get install -y potrace
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/engine[emit]" -e "apps/api[dev]" -e apps/worker
+
+      - name: Lint
+        run: ruff check apps/api apps/worker
+
+      - name: Typecheck
+        run: |
+          cd apps/api && mypy app
+          cd ../worker && mypy worker
+
+      - name: Tests
+        run: cd apps/api && pytest tests -q
+
+      # The migration is the only way production schema changes happen, so a
+      # migration that does not apply is a broken deploy, not a broken test.
+      - name: Migrations apply and roll back
+        env:
+          VEC_DATABASE_URL: sqlite+pysqlite:///./ci.db
+        run: |
+          cd apps/api
+          alembic upgrade head
+          alembic downgrade base
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: cd apps/web && npm ci
+
+      - name: Lint
+        run: cd apps/web && npm run lint
+
+      - name: Typecheck
+        run: cd apps/web && npm run typecheck
+
+      - name: Build
+        run: cd apps/web && npm run build
+
+      # §9: Core Web Vitals are a budget, checked in CI. LCP < 2.0s and
+      # CLS < 0.05, with every Lighthouse category at 95 or better.
+      - name: Lighthouse budget
+        run: cd apps/web && npx --yes @lhci/cli@0.14.x autorun

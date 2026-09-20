@@ -1,0 +1,55 @@
+name: engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Tracer binaries are not pip-installable and every score depends on
+      # their exact versions. Pin them: a vtracer bump changes geometry, and
+      # an unpinned bump would show up as an unexplained bench regression.
+      - name: Cache cargo binaries
+        id: cargo-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: tracers-vtracer0.6.5-resvg0.48.1
+
+      - name: Install vtracer and resvg
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        run: cargo install vtracer --version 0.6.5 --locked
+          && cargo install resvg --version 0.48.1 --locked
+
+      - name: Install potrace
+        run: sudo apt-get update && sudo apt-get install -y potrace
+
+      - name: Install the engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "packages/engine[dev,emit]"
+
+      - name: Lint
+        run: ruff check packages/engine benchmarks
+
+      - name: Typecheck
+        run: cd packages/engine && mypy engine
+
+      - name: Tests
+        run: cd packages/engine && pytest tests -q --cov=engine --cov-fail-under=80
+
+      # §3.9: fails any PR that lowers a category mean by more than 0.005.
+      # Without this gate, quality drifts invisibly — every individual change
+      # looks harmless and the corpus mean walks downhill.
+      - name: Benchmark regression gate
+        run: python benchmarks/run.py

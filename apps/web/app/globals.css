@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens, ported verbatim from the Vectorize4u prototype.
+ *
+ * Two rules the rest of the app depends on:
+ *
+ * - Nothing hard-codes a colour. Every surface reads a token, so the dark
+ *   theme is a token swap rather than a second stylesheet.
+ * - The theme is driven by `data-theme` on <html> **and** by the OS
+ *   preference. The attribute wins, so an explicit choice survives a
+ *   system change mid-session.
+ */
+
+:root {
+  --ink-0: #ffffff;
+  --ink-25: #fafbfc;
+  --ink-50: #f2f4f7;
+  --ink-100: #e5e9ef;
+  --ink-200: #cfd6e0;
+  --ink-300: #aab4c2;
+  --ink-400: #7c8896;
+  --ink-500: #5a6672;
+  --ink-700: #39424d;
+  --ink-800: #232a33;
+  --ink-900: #131920;
+
+  --cyan: #0088a8;
+  /* White on #0088a8 is 4.13:1 — below the 4.5:1 that normal-size text
+     needs. The accent itself is kept for borders, the brand mark and the
+     split handle, where it carries no text; anything with white text on it
+     uses --cyan-strong (5.5:1). */
+  --cyan-strong: #00738c;
+  --cyan-fg: #ffffff;
+  --cyan-soft: #e4f4f8;
+  --cyan-border: #9fd6e3;
+  --magenta: #c01e62;
+  --magenta-soft: #fce8f0;
+  --magenta-border: #ebb3cb;
+  --amber: #b57a00;
+  --amber-soft: #fdf3df;
+  --amber-border: #e8ce8f;
+  --green: #1e7a54;
+  --green-soft: #e4f3ec;
+  --green-border: #a8d6c1;
+
+  /* The comparison canvas is mid-grey on purpose: white artwork and black
+     artwork both have to read against it, and a checkerboard behind a
+     zoomed trace is visual noise at 800%. */
+  --canvas-bg: #8c8c8c;
+  --canvas-check-a: #ffffff;
+  --canvas-check-b: #e6e6e6;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  --shadow-1: 0 1px 2px rgba(19, 25, 32, 0.06), 0 1px 1px rgba(19, 25, 32, 0.04);
+  --shadow-2: 0 4px 12px rgba(19, 25, 32, 0.08), 0 1px 3px rgba(19, 25, 32, 0.06);
+  --shadow-3: 0 16px 40px rgba(19, 25, 32, 0.14);
+
+  --text-display: 3.05rem;
+  --text-h1: 2.44rem;
+  --text-h2: 1.95rem;
+  --text-h3: 1.56rem;
+  --text-lg: 1.25rem;
+  --text-base: 1rem;
+  --text-sm: 0.875rem;
+  --text-xs: 0.78rem;
+
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+}
+
+[data-theme="dark"] {
+  --ink-0: #0d1218;
+  --ink-25: #111821;
+  --ink-50: #18212b;
+  --ink-100: #222c38;
+  --ink-200: #2e3a48;
+  --ink-300: #56646f;
+  --ink-400: #7e8b99;
+  --ink-500: #9aa6b4;
+  --ink-700: #c6ced8;
+  --ink-800: #e4eaf1;
+  --ink-900: #f5f7fa;
+
+  --cyan: #00a8cc;
+  /* Dark theme puts near-black text on the accent, which is 6.5:1 — the
+     accent itself is already safe, so strong and base are the same. */
+  --cyan-strong: #00a8cc;
+  --cyan-fg: #04181d;
+  --cyan-soft: #0c2c36;
+  --cyan-border: #12525f;
+  --magenta: #e8548c;
+  --magenta-soft: #33121f;
+  --magenta-border: #6b2440;
+  --amber: #e0a532;
+  --amber-soft: #2e230c;
+  --amber-border: #5c4718;
+  --green: #3fb183;
+  --green-soft: #0e2b21;
+  --green-border: #1e5641;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink-0: #0d1218;
+    --ink-25: #111821;
+    --ink-50: #18212b;
+    --ink-100: #222c38;
+    --ink-200: #2e3a48;
+    --ink-300: #56646f;
+    --ink-400: #7e8b99;
+    --ink-500: #9aa6b4;
+    --ink-700: #c6ced8;
+    --ink-800: #e4eaf1;
+    --ink-900: #f5f7fa;
+
+    --cyan: #00a8cc;
+    --cyan-strong: #00a8cc;
+    --cyan-fg: #04181d;
+    --cyan-soft: #0c2c36;
+    --cyan-border: #12525f;
+    --magenta: #e8548c;
+    --magenta-soft: #33121f;
+    --magenta-border: #6b2440;
+    --amber: #e0a532;
+    --amber-soft: #2e230c;
+    --amber-border: #5c4718;
+    --green: #3fb183;
+    --green-soft: #0e2b21;
+    --green-border: #1e5641;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--ink-25);
+  color: var(--ink-700);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  /* Numbers sit in tables, score readouts and progress lines all over the
+     app; proportional digits make them jitter as they update. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink-900);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Off-screen until focused: keyboard users get to skip the nav, and nobody
+   else ever sees it. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+}
+
+.skip-link:focus-visible {
+  left: 12px;
+  top: 12px;
+  background: var(--cyan-strong);
+  color: var(--cyan-fg);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+
+input[type="range"] {
+  accent-color: var(--cyan);
+  width: 100%;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--cyan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
