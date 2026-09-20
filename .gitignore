@@ -18,3 +18,4 @@ benchmarks/ab/out/
 .storage/
 dev.db
 ci.db
+benchmarks/acceptance/out/

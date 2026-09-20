@@ -6,7 +6,7 @@ PIP ?= .venv/bin/pip
 ENGINE := packages/engine
 
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
-        bench-baseline ab ab-report api worker web web-build web-lint clean
+        bench-baseline ab ab-report kit api worker web web-build web-lint clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -82,6 +82,9 @@ ab-external: ## blind A/B against SVGs in benchmarks/ab/external/
 ab-report: ## apply the §12 kill switch to benchmarks/ab/votes.json
 	$(PY) benchmarks/ab/report.py
 
+kit: ## build + self-verify the cut-correctness acceptance kit (§13)
+	$(PY) benchmarks/acceptance/make_kit.py
+
 clean:
-	rm -rf benchmarks/ab/out benchmarks/out .pytest_cache .ruff_cache .mypy_cache
+	rm -rf benchmarks/ab/out benchmarks/acceptance/out benchmarks/out .pytest_cache .ruff_cache .mypy_cache
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
