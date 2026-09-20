@@ -19,11 +19,16 @@ redelivered forever. The delivery cap in `tasks.py` is the guard.
 
 from __future__ import annotations
 
+import logging
 import os
+from typing import Any
 
 from app.config import settings
 from celery import Celery
+from celery.signals import worker_ready
 from kombu import Queue
+
+log = logging.getLogger("vectorize.worker")
 
 QUEUE_PREVIEW = "queue_preview"
 QUEUE_SYNC = "queue_sync"
@@ -73,3 +78,67 @@ celery_app.conf.update(
 
 # How many times one job may be delivered before we stop trying (§4.1).
 MAX_DELIVERIES = int(os.environ.get("VEC_MAX_DELIVERIES", "3"))
+
+
+@worker_ready.connect  # type: ignore[misc]
+def _report_environment(sender: Any = None, **_: Any) -> None:
+    """Say out loud what this machine actually is, once, at startup.
+
+    Three things here are assumptions everywhere else in the system, and
+    all three are properties of the host rather than of the code:
+
+    - **Which lanes this worker consumes.** Three pools, no sharing (§4.2).
+      A worker that quietly took every queue would satisfy every test and
+      break the preview guarantee in production.
+    - **What isolation actually applied.** `sandbox_mode()` reports what the
+      host allowed, not what we asked for — cgroup control inside a
+      Firecracker VM is exactly the thing not to assume (§3.5).
+    - **Which tracer binaries are on this PATH.** A tracer bump moves every
+      benchmark score, so the version that produced a given job has to be
+      recoverable from its logs rather than from someone's memory.
+    """
+    from engine.sandbox import sandbox_mode
+
+    log.info("worker lanes: %s", ", ".join(_consumed_queues(sender)) or "(none)")
+    log.info("sandbox mode: %s", sandbox_mode())
+    for name, env_var in (
+        ("vtracer", "ENGINE_VTRACER_BIN"),
+        ("resvg", "ENGINE_RESVG_BIN"),
+        ("potrace", "ENGINE_POTRACE_BIN"),
+    ):
+        log.info("tracer %s: %s", name, _binary_version(name, env_var))
+
+
+def _consumed_queues(sender: Any) -> list[str]:
+    """The lanes this worker is actually consuming, not the declared set.
+
+    `task_queues` lists all three lanes in every process — it is the
+    declaration. What a given machine consumes comes from `-Q`, and that is
+    the number that matters, because a worker taking every lane is how a
+    500-file batch ends up delaying previews.
+    """
+    try:
+        return sorted(str(name) for name in sender.app.amqp.queues.consume_from)
+    except Exception:  # pragma: no cover - depends on the celery internals
+        declared = sorted(q.name for q in celery_app.conf.task_queues or ())
+        return [f"{name} (declared; -Q not readable)" for name in declared]
+
+
+def _binary_version(name: str, env_var: str) -> str:
+    import subprocess
+
+    from engine.sandbox import MissingBinary, resolve_binary
+
+    try:
+        path = resolve_binary(name, env_var)
+    except MissingBinary:
+        return "NOT FOUND"
+    for flag in ("--version", "-v"):
+        try:
+            done = subprocess.run([path, flag], capture_output=True, timeout=5, text=True)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        output = (done.stdout or done.stderr).strip().splitlines()
+        if output:
+            return f"{output[0]} ({path})"
+    return path

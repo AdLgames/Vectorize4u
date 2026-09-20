@@ -1,0 +1,26 @@
+# §4.2 lane 1 of 3: the preview pool.
+#
+# This lane is the sales pitch — stage A p95 under 2 seconds — so it is
+# always warm, never scaled to zero, and never shares a machine with batch
+# work.
+#
+#   fly deploy -c infra/fly.worker-preview.toml
+app = "vectorize-worker-preview"
+primary_region = "lhr"
+
+# No [build] section: see the note in fly.api.toml. The deploy commands in
+# the Makefile pass --dockerfile and the context explicitly.
+
+[env]
+  VEC_ENVIRONMENT = "prod"
+  VEC_STORAGE_BACKEND = "r2"
+  QUEUES = "queue_preview"
+  CONCURRENCY = "4"
+
+# No [http_service]: workers take work from Redis, not from the internet.
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
+
+[processes]
+  worker = ""

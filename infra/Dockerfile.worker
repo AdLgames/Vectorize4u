@@ -1,0 +1,67 @@
+# The worker image: the engine, its three tracer binaries, and Celery.
+#
+# Build from the repository root:
+#   docker build -f infra/Dockerfile.worker -t vectorize-worker .
+#
+# The tracer versions are pinned as build args and default to the numbers in
+# infra/tracers.env, which CI reads too. Change them in one place, rebuild,
+# and re-run `make bench` before shipping: a tracer bump moves geometry, and
+# therefore moves every score.
+
+ARG VTRACER_VERSION=0.6.5
+ARG RESVG_VERSION=0.48.1
+
+FROM rust:1.83-slim-bookworm AS tracers
+ARG VTRACER_VERSION
+ARG RESVG_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN cargo install vtracer --version "${VTRACER_VERSION}" --locked --root /out \
+ && cargo install resvg --version "${RESVG_VERSION}" --locked --root /out
+
+
+FROM python:3.11-slim-bookworm AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# potrace is GPLv2. It is installed as a *binary* and invoked as a
+# subprocess — never linked, never imported. See docs/licensing.md before
+# changing how it gets into this image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      potrace \
+      libgl1 \
+      libglib2.0-0 \
+      libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=tracers /out/bin/vtracer /usr/local/bin/vtracer
+COPY --from=tracers /out/bin/resvg /usr/local/bin/resvg
+
+WORKDIR /srv
+
+COPY packages/engine /srv/packages/engine
+COPY apps/api /srv/apps/api
+COPY apps/worker /srv/apps/worker
+
+RUN pip install --no-cache-dir "/srv/packages/engine[emit]" && \
+    pip install --no-cache-dir /srv/apps/api && \
+    pip install --no-cache-dir /srv/apps/worker
+
+# Fail the build, not a customer's job, if a tracer did not make it in.
+RUN vtracer --help > /dev/null && resvg --help > /dev/null && potrace --version
+
+RUN useradd --system --uid 10001 --home /srv vectorize && chown -R vectorize /srv
+USER vectorize
+
+WORKDIR /srv/apps/worker
+
+# QUEUES and CONCURRENCY come from the machine's environment, because the
+# three pools of §4.2 are the same image with different values. There is no
+# default: a worker that silently consumes every lane is how a 500-file
+# batch ends up delaying previews.
+CMD ["sh", "-c", "exec python -m celery -A worker.celery_app:celery_app worker \
+     -Q \"${QUEUES:?set QUEUES to one lane: queue_preview, queue_sync or queue_batch}\" \
+     --concurrency \"${CONCURRENCY:-2}\" \
+     --without-gossip --without-mingle --loglevel=info"]

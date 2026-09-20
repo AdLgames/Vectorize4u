@@ -7,7 +7,7 @@ ENGINE := packages/engine
 
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
         bench-baseline ab ab-report kit api worker web web-build web-lint e2e \
-        stripe-bootstrap types clean
+        stripe-bootstrap types images deploy-api deploy-workers r2-lifecycle clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -77,6 +77,21 @@ e2e: ## drive the app in a real browser (needs `make api` + `make web`)
 	cd apps/web && npm install --no-save playwright \
 	  && node e2e/smoke.mjs && node e2e/signed-in.mjs && node e2e/checkout.mjs \
 	  && node e2e/intent-pages.mjs && node e2e/tools.mjs
+
+images: ## build both production images locally (the build context is the repo root)
+	docker build -f infra/Dockerfile.api -t vectorize-api .
+	docker build -f infra/Dockerfile.worker -t vectorize-worker .
+
+deploy-api: ## fly deploy the API (runs alembic upgrade head as its release command)
+	fly deploy --config infra/fly.api.toml --dockerfile infra/Dockerfile.api .
+
+deploy-workers: ## fly deploy all three worker lanes (§4.2)
+	fly deploy --config infra/fly.worker-preview.toml --dockerfile infra/Dockerfile.worker .
+	fly deploy --config infra/fly.worker-sync.toml --dockerfile infra/Dockerfile.worker .
+	fly deploy --config infra/fly.worker-batch.toml --dockerfile infra/Dockerfile.worker .
+
+r2-lifecycle: ## check the retention backstop on the bucket (--apply to write it)
+	cd apps/api && ../../$(PY) ../../infra/r2_lifecycle.py --check
 
 stripe-bootstrap: ## create this product's Stripe products and prices (idempotent)
 	cd apps/api && ../../$(PY) scripts/bootstrap_stripe.py

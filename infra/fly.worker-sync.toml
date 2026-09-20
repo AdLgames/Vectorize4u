@@ -1,0 +1,22 @@
+# §4.2 lane 2 of 3: single-file web and API conversions, under the 8-second
+# hold window.
+#
+#   fly deploy -c infra/fly.worker-sync.toml
+app = "vectorize-worker-sync"
+primary_region = "lhr"
+
+# No [build] section: see the note in fly.api.toml. The deploy commands in
+# the Makefile pass --dockerfile and the context explicitly.
+
+[env]
+  VEC_ENVIRONMENT = "prod"
+  VEC_STORAGE_BACKEND = "r2"
+  QUEUES = "queue_sync"
+  CONCURRENCY = "4"
+
+[[vm]]
+  size = "performance-4x"
+  memory = "8gb"
+
+[processes]
+  worker = ""
