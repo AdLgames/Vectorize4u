@@ -97,7 +97,14 @@ refine-report` reproduces the numbers.
 
 The deployment (`/infra`) exists — two images, four Fly apps, the R2
 lifecycle backstop — and has **never been run against a real Fly account**.
-Neither has Stripe, which needs your keys.
+`docs/first-deploy.md` walks it step by step, and it does not need Stripe:
+`VEC_PAYMENTS_ENABLED=0` runs a staging deployment that converts images
+but cannot sell them. Stripe itself still needs your keys.
+
+§13's two load items **are** verified, against a real broker and real
+Postgres: `make load-test` (a 500-file batch must not raise preview p95)
+and `make soak` (worker RSS must stay flat). Both pass; see
+`docs/architecture.md` for the numbers and the two bugs they found.
 
 One step remains before money can move: **Stripe has never run against a
 real account.** Checkout, the billing portal and the price list are built
