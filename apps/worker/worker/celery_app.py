@@ -165,4 +165,4 @@ def _binary_version(name: str, env_var: str) -> str:
         output = (done.stdout or done.stderr).strip().splitlines()
         if output:
             return f"{output[0]} ({path})"
-    return path
+    return str(path)

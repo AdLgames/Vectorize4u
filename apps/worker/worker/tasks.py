@@ -443,11 +443,25 @@ class WebhookDeliveryFailed(Exception):
     """The endpoint was reachable-in-principle but did not accept the call."""
 
 
+def _webhook_client() -> Any:
+    """The HTTP client used for callbacks. A seam, but a narrow one.
+
+    Tests swap the *transport* under this rather than replacing the call,
+    so the real request-building path — and its real keyword arguments —
+    is the one under test. Replacing `httpx.post` wholesale is what let a
+    TypeError ship.
+    """
+    import httpx
+
+    return httpx.Client(timeout=10.0, follow_redirects=False)
+
+
 def _resolve_callback(url: str) -> tuple[str, str]:
     """(ip, host) for a callback URL, or raise UnsafeUrl. A seam for tests."""
     from app.fetcher import validate
 
-    return validate(url)
+    ip, host = validate(url)
+    return str(ip), str(host)
 
 
 def deliver_webhook_inline(url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -463,7 +477,6 @@ def deliver_webhook_inline(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     import json
     from urllib.parse import urlparse, urlunparse
 
-    import httpx
     from app.config import settings
     from app.fetcher import UnsafeUrl
 
@@ -487,19 +500,25 @@ def deliver_webhook_inline(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     target = urlunparse(parsed._replace(netloc=connect_host))
 
     try:
-        response = httpx.post(
-            target,
-            content=body,
-            headers={
-                "Host": host,
-                "Content-Type": "application/json",
-                "X-Vectorize-Timestamp": timestamp,
-                "X-Vectorize-Signature": f"sha256={signature}",
-            },
-            timeout=10.0,
-            follow_redirects=False,
-            extensions={"sni_hostname": host},
-        )
+        # A Client, not httpx.post: the module-level helpers do not accept
+        # `extensions`, and `sni_hostname` is what lets us connect to the
+        # address we checked while still presenting the real hostname for
+        # TLS. Passing it to httpx.post raised TypeError on every single
+        # delivery — caught by the retry below, so it looked exactly like
+        # a customer endpoint that was always down.
+        with _webhook_client() as client:
+            response = client.request(
+                "POST",
+                target,
+                content=body,
+                headers={
+                    "Host": host,
+                    "Content-Type": "application/json",
+                    "X-Vectorize-Timestamp": timestamp,
+                    "X-Vectorize-Signature": f"sha256={signature}",
+                },
+                extensions={"sni_hostname": host},
+            )
         response.raise_for_status()
     except Exception as exc:
         raise WebhookDeliveryFailed(str(exc)) from exc
