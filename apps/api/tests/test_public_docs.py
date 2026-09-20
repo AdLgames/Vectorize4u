@@ -105,3 +105,19 @@ def test_every_documented_error_code_is_one_we_raise(reference):
     )
     for code in re.findall(r'code:\s*"([a-z_]+)"', reference):
         assert f'"{code}"' in everything, f"documented error code never raised: {code}"
+
+
+def test_the_generated_typescript_types_are_current():
+    """`packages/shared/types.ts` is checked in, so it can go stale between
+    a schema change and someone remembering to regenerate it. This is the
+    reminder."""
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        [sys.executable, str(root / "packages" / "shared" / "generate.py"), "--check"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr or "types.ts is stale — run `make types`"

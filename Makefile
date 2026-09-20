@@ -7,7 +7,7 @@ ENGINE := packages/engine
 
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
         bench-baseline ab ab-report kit api worker web web-build web-lint e2e \
-        stripe-bootstrap clean
+        stripe-bootstrap types clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -37,6 +37,9 @@ test-api: ## run the service test suite (the real engine runs inside it)
 
 lint: ## ruff
 	$(PY) -m ruff check $(ENGINE) benchmarks apps/api apps/worker
+
+types: ## regenerate packages/shared/types.ts from the OpenAPI schema
+	$(PY) packages/shared/generate.py
 
 format: ## ruff --fix
 	$(PY) -m ruff check --fix $(ENGINE) benchmarks

@@ -35,7 +35,7 @@ import { Button, Card, Muted, Notice } from "./ui";
 
 export type ConverterProps = {
   cutIntent?: boolean;
-  defaultFormats?: string[];
+  defaultFormats?: NonNullable<JobOptions["format"]>;
   compact?: boolean;
 };
 

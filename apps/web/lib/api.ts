@@ -8,59 +8,24 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
-export type Quality = {
-  total: number;
-  fidelity: number;
-  ssim: number;
-  edge_f1: number;
-  color: number;
-  alpha_iou: number | null;
-  nodes: number;
-  paths: number;
-  /** Never compare scores across versions (§3.6). Always shown with the number. */
-  score_version: string;
-};
+/**
+ * The wire types are generated from the API's own OpenAPI schema
+ * (`packages/shared/types.ts`, §11) rather than restated here: a
+ * hand-maintained copy of a contract drifts silently, and the first symptom
+ * is a runtime error in a paying customer's browser.
+ */
+export type {
+  JobOptions,
+  PhysicalSize,
+  Quality,
+  AccountResponse,
+  BatchResponse,
+  UploadResponse,
+} from "@shared/types";
 
-export type PhysicalSize = {
-  width_mm: number;
-  height_mm: number;
-  source: "user" | "metadata" | "assumed";
-};
+import type { JobOptions, JobResponse } from "@shared/types";
 
-export type Job = {
-  id: string;
-  status: "queued" | "processing" | "complete" | "failed" | "expired";
-  kind: string;
-  source_width: number | null;
-  source_height: number | null;
-  classification: string | null;
-  classification_confidence: number | null;
-  quality: Quality | null;
-  physical_size: PhysicalSize | null;
-  warnings: string[];
-  /** Empty until unlock for every vector format — enforced server-side. */
-  outputs: Record<string, string>;
-  preview_url: string | null;
-  credits_charged: number;
-  unlocked: boolean;
-  error_code: string | null;
-  engine_version: string | null;
-};
-
-export type JobOptions = {
-  format?: string[];
-  mode?: "auto" | "flat" | "lineart" | "sketch" | "photo";
-  max_colors?: number | null;
-  detail?: "low" | "balanced" | "high";
-  despeckle?: number;
-  keep_background?: boolean;
-  simplify?: boolean;
-  output_width?: number | null;
-  units?: "mm" | "in";
-  quality_tier?: "fast" | "standard" | "max";
-  dxf_tolerance?: number;
-  min_node_spacing_mm?: number;
-};
+export type Job = JobResponse;
 
 export type Problem = {
   error_code: string;

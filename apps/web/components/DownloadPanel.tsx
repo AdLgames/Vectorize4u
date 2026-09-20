@@ -1,6 +1,9 @@
 "use client";
 
 import type { Job, JobOptions } from "@/lib/api";
+
+/** The formats the API actually accepts, straight from its schema. */
+type FormatId = NonNullable<JobOptions["format"]>[number];
 import { Button, Card, Field } from "./ui";
 
 /**
@@ -42,8 +45,10 @@ export default function DownloadPanel({
   /** Cut-intent pages ask the size question even before DXF is picked. */
   cutIntent?: boolean;
 }) {
-  const selected = (options.format ?? ["svg"]).filter((f) => f !== "svg").concat("svg");
-  const active = selected[0] === "svg" ? "svg" : selected[0];
+  const chosen: FormatId[] = options.format ?? ["svg"];
+  // SVG last: it is always produced, so it is the fallback, not the choice.
+  const selected: FormatId[] = [...chosen.filter((f) => f !== "svg"), "svg"];
+  const active: FormatId = selected[0];
   // §3.8: cut-intent pages and any DXF download ask "How wide should this
   // be?" before anything can be downloaded.
   const needsSize = cutIntent || selected.includes("dxf");
@@ -71,7 +76,7 @@ export default function DownloadPanel({
               type="button"
               aria-pressed={on}
               onClick={() => {
-                const next = new Set(options.format ?? ["svg"]);
+                const next = new Set<FormatId>(options.format ?? ["svg"]);
                 if (on && format.id !== "svg") next.delete(format.id);
                 else next.add(format.id);
                 next.add("svg"); // SVG is always produced (§3.8)
