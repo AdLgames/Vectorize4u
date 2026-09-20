@@ -80,15 +80,23 @@ tune and debug it.
 
 ## What is not built
 
-The Phase 8 refinement loop, and the one Phase 7 item that is deliberately
-not built: the comparison page against Vectorizer.AI. §9 allows it **only
-if** the blind A/B supports an honest one, and `benchmarks/ab/votes.json`
-is not in the repository, so there is nothing to write from yet.
+Two things, both deliberate:
 
-Everything else in Phases 6 and 7 is built: keys, per-key rate limits,
-billable overage with a hard cap, job and batch webhooks, public API docs,
-generated wire types in `packages/shared`, six intent pages, three
-browser-only free tools and three buyer-facing guides.
+- **The comparison page against Vectorizer.AI.** §9 allows it **only if**
+  the blind A/B supports an honest one, and `benchmarks/ab/votes.json` is
+  not in the repository, so there is nothing to write from yet.
+- **Centerline tracing**, evaluated in Phase 8 and not adopted. The
+  prototype works and the licensing objection in §0 turns out not to
+  apply; the cost is a second kind of geometry through post-processing,
+  scoring and DXF export. See `docs/architecture.md`.
+
+Phases 0–8 are otherwise built. Phase 8's localised refinement ships
+disabled on measured grounds rather than unbuilt ones — `make
+refine-report` reproduces the numbers.
+
+The deployment (`/infra`) exists — two images, four Fly apps, the R2
+lifecycle backstop — and has **never been run against a real Fly account**.
+Neither has Stripe, which needs your keys.
 
 One step remains before money can move: **Stripe has never run against a
 real account.** Checkout, the billing portal and the price list are built
