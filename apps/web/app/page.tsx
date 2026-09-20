@@ -1,85 +1,87 @@
-import Link from "next/link";
+import Converter from "@/components/Converter";
+import Pricing from "@/components/Pricing";
 import { SoftwareApplicationLd } from "@/components/JsonLd";
 
 /**
- * The home page states the positioning of §0 plainly: we are not selling
- * "an SVG converter" — vtracer is free and Illustrator has Image Trace.
- * We sell batch, cut-correctness and honesty about quality.
+ * The landing page states §0's positioning without saying it out loud: we
+ * are not selling "an SVG converter" — vtracer is free and Illustrator has
+ * Image Trace. We sell batch, cut-correctness and honesty about quality.
+ *
+ * The hero is the converter itself. The zoom is the pitch: the original
+ * pixelates, the vector stays sharp.
  */
 
 export default function Home() {
   return (
-    <div className="mx-auto max-w-6xl space-y-16 px-4 py-14">
+    <div style={{ padding: "40px 20px 64px", display: "grid", gap: "var(--space-8)" }}>
       <SoftwareApplicationLd
-        name="Vectorize"
+        name="Vectorize4u"
         description="Batch raster-to-vector conversion with cutter-safe output and an exposed quality score."
       />
 
-      <section className="space-y-6">
-        <h1 className="max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">
-          Vector files that work on the machine, not just on screen.
-        </h1>
-        <p className="max-w-2xl text-lg text-slate-600 dark:text-slate-300">
-          Convert logos and line art to SVG, DXF, PDF and EPS — hundreds at a time,
-          at the physical size you specify, with a quality score you can actually see.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/convert"
-            className="rounded bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
-          >
-            Convert an image free
-          </Link>
-          <Link
-            href="/convert-for-cricut"
-            className="rounded border border-slate-300 px-5 py-3 font-medium hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
-          >
-            For Cricut &amp; laser cutters
-          </Link>
+      <section style={{ display: "grid", gap: "var(--space-5)" }}>
+        <div style={{ maxWidth: 620 }}>
+          <h1 style={{ fontSize: "var(--text-h1)", margin: "0 0 12px" }}>
+            Turn a rough image into a file that prints and cuts clean
+          </h1>
+          <p style={{ fontSize: "var(--text-lg)", color: "var(--ink-500)", margin: 0 }}>
+            Drop a file. Drag the handle, zoom to 800%. The left side is the original pixels,
+            the right side is the vector we&apos;d give you back.
+          </p>
         </div>
+        <Converter />
       </section>
 
-      <section className="grid gap-8 sm:grid-cols-3">
-        <Feature title="Batch, properly">
-          Drop 500 files. Progress is stored on our side, so closing the tab doesn’t
-          lose the run, and any single file can be retried on its own.
-        </Feature>
-        <Feature title="Opens at the right size">
-          Tell us how wide it should be and the SVG carries real units; the DXF
-          carries absolute units and flattened curves your cutter can read.
-        </Feature>
-        <Feature title="An honest score">
-          Every result comes with a match percentage, a point count and plain warnings
-          when the source won’t trace well. No surprises after you pay.
-        </Feature>
+      <section
+        style={{
+          display: "grid",
+          gap: "var(--space-5)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+        }}
+      >
+        <Audience title="Selling prints and shirts">
+          Drop a week of designs in one go — up to 500 files — and get one zip back. Each file
+          keeps its own name.
+        </Audience>
+        <Audience title="Cutting, engraving, embroidery">
+          Say how wide it should be in millimetres or inches, and the DXF opens at that size in
+          Design Space or LightBurn.
+        </Audience>
+        <Audience title="Print shops and studios">
+          A client&apos;s 400 px JPEG comes back as press-ready art, with the colours it started
+          with. Files are deleted, not kept.
+        </Audience>
       </section>
 
-      <section className="space-y-4 rounded-lg bg-slate-50 p-6 dark:bg-slate-900">
-        <h2 className="text-xl font-semibold">What we don’t do</h2>
-        <ul className="list-disc space-y-1 pl-5 text-slate-600 dark:text-slate-300">
-          <li>
-            <strong>Photographs.</strong> They don’t vectorize cleanly and never will. We
-            detect them and say so rather than selling you a mess.
-          </li>
-          <li>
-            <strong>Stitch files.</strong> We produce clean artwork for Ink/Stitch, Hatch
-            and similar. Digitizing is a different problem and we don’t pretend otherwise.
-          </li>
-          <li>
-            <strong>True gradients.</strong> Tracing bands a gradient into steps. We do the
-            best banded trace and warn you.
-          </li>
-        </ul>
+      <section
+        style={{
+          display: "flex",
+          gap: 20,
+          flexWrap: "wrap",
+          fontSize: "var(--text-xs)",
+          color: "var(--ink-400)",
+          borderTop: "1px solid var(--ink-100)",
+          borderBottom: "1px solid var(--ink-100)",
+          padding: "var(--space-4) 0",
+        }}
+      >
+        <span>Out: SVG · PDF · EPS · DXF · PNG</span>
+        <span>In: PNG, JPEG, WEBP, TIFF, GIF, BMP, HEIC</span>
+        <span>
+          Photographs don&apos;t vectorize cleanly, and we say so rather than selling you a mess.
+        </span>
       </section>
+
+      <Pricing />
     </div>
   );
 }
 
-function Feature({ title, children }: { title: string; children: React.ReactNode }) {
+function Audience({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="text-slate-600 dark:text-slate-300">{children}</p>
+    <div>
+      <h3 style={{ fontSize: "var(--text-h3)", margin: "0 0 6px" }}>{title}</h3>
+      <p style={{ color: "var(--ink-500)", margin: 0 }}>{children}</p>
     </div>
   );
 }

@@ -31,6 +31,8 @@ export type Job = {
   id: string;
   status: "queued" | "processing" | "complete" | "failed" | "expired";
   kind: string;
+  source_width: number | null;
+  source_height: number | null;
   classification: string | null;
   classification_confidence: number | null;
   quality: Quality | null;
@@ -50,6 +52,8 @@ export type JobOptions = {
   mode?: "auto" | "flat" | "lineart" | "sketch" | "photo";
   max_colors?: number | null;
   detail?: "low" | "balanced" | "high";
+  despeckle?: number;
+  keep_background?: boolean;
   simplify?: boolean;
   output_width?: number | null;
   units?: "mm" | "in";

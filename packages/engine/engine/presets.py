@@ -7,6 +7,8 @@ degrades instead of failing.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import cv2
 import numpy as np
 
@@ -139,7 +141,7 @@ def candidates_for(
     if budget == 1:
         # `fast` tier: one candidate, and it must be the class's first choice
         # rather than the fallback, or the cheap tier looks broken.
-        return picked[:1]
+        return _apply_despeckle(picked[:1], options)
 
     if len(picked) < budget:
         extras = [
@@ -156,4 +158,19 @@ def candidates_for(
                 break
             add(p)
 
-    return picked[:budget]
+    return _apply_despeckle(picked[:budget], options)
+
+
+def _apply_despeckle(picked: list[Params], options: Options) -> list[Params]:
+    """Force every candidate to the speckle strength the user asked for.
+
+    Applied to the final list rather than mid-selection, so candidates added
+    later to pad a tier cannot escape it. It overrides the class presets
+    instead of joining the search: searching around a value the user set
+    explicitly would mean showing them a result their own setting says they
+    did not want.
+    """
+    if options.despeckle is None:
+        return picked
+    strength = int(max(0, min(16, options.despeckle)))
+    return [replace(p, filter_speckle=strength, turdsize=strength) for p in picked]

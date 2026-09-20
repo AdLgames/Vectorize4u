@@ -88,3 +88,29 @@ def test_all_vtracer_candidates_are_stacked():
 def test_detail_option_adds_a_candidate():
     high = candidates_for(_profile(), Options(quality_tier="max", detail="high"), _image())
     assert any(p.label == "detail-high" for p in high)
+
+
+def test_despeckle_overrides_every_candidate():
+    """The UI's "Clean up specks" is an instruction, not another search axis.
+
+    Searching around a value the user explicitly chose would mean showing
+    them a result their own setting says they did not want.
+    """
+    picked = candidates_for(
+        _profile("LINE_ART"), Options(quality_tier="max", despeckle=11), _image()
+    )
+    assert picked
+    assert all(p.filter_speckle == 11 for p in picked if p.engine == "vtracer")
+    assert all(p.turdsize == 11 for p in picked if p.engine == "potrace")
+
+
+def test_despeckle_is_clamped_to_the_tracer_range():
+    picked = candidates_for(
+        _profile(), Options(quality_tier="fast", despeckle=999), _image()
+    )
+    assert picked[0].filter_speckle == 16
+
+
+def test_no_despeckle_leaves_the_presets_alone():
+    tuned = candidates_for(_profile(), Options(quality_tier="max"), _image())
+    assert {p.filter_speckle for p in tuned} != {4}

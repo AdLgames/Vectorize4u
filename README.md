@@ -72,21 +72,26 @@ shows a sign-in prompt rather than pretending otherwise:
 - **Web auth.** The API's JWT and API-key verification are real and tested;
   the web app has not been wired to an identity provider.
 - **Checkout.** Stripe events map to grants and reconcile with zero drift,
-  but there is no checkout page — §10's pricing decision is still open.
+  but there is no checkout page. §10's pricing decision is resolved (Free /
+  $9 credit pack / $12 Starter / $29 Pro — see docs/architecture.md); the
+  Stripe products and the checkout redirect are not wired.
 
-## The thing that decides whether any of this continues
+## The evidence, not the metric
 
 `make bench` grades our own selector against our own metric. It detects
-regressions; it is **not** evidence the product is good.
+regressions; it is **not** evidence the product is good — selecting by a
+metric and then reporting that metric is circular.
 
-The evidence is the blind A/B in §12 — randomised pairs voted by people who
-did not write the code. Ours must be preferred on **≥ 70%** of pairs against
-a single default `vtracer` call. Below that, the search adds nothing a free
-binary does not, and stopping is the right answer.
+The evidence is the blind A/B in §12: randomised pairs voted by people who
+did not write the code, gated at **≥ 70%** against a single default
+`vtracer` call.
 
 ```bash
 make ab          # builds the voting page
 make ab-report   # applies the kill switch
 ```
 
-**That vote has not been run yet.** It needs 2–3 humans and about an hour.
+The owner reports this vote has been run and passed, which is why
+development continued past Phase 0. The votes file is not in the repository
+yet — commit `benchmarks/ab/votes.json` so the number is auditable, and
+re-run the vote whenever `score_version` or the presets change.

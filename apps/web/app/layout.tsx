@@ -1,75 +1,76 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Instrument_Sans } from "next/font/google";
+import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vectorize.example";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vectorize4u.example";
+
+const sans = Instrument_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: {
-    default: "Vectorize — batch raster to vector, at the right size",
-    template: "%s | Vectorize",
+    default: "Vectorize4u — turn a rough image into a file that prints and cuts clean",
+    template: "%s | Vectorize4u",
   },
   description:
-    "Convert PNG and JPEG logos to clean SVG, DXF, PDF and EPS. Built for people who vectorize for money: batch conversion, cutter-safe paths and an honest quality score.",
-  openGraph: {
-    type: "website",
-    siteName: "Vectorize",
-    images: ["/og.svg"],
-  },
+    "Convert PNG and JPEG artwork to clean SVG, PDF, EPS and DXF. Batch up to 500 files, set the exact size it should cut at, and see a quality score before you pay.",
+  openGraph: { type: "website", siteName: "Vectorize4u", images: ["/og.svg"] },
   robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="antialiased">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-white"
-        >
+    <html lang="en" className={sans.variable}>
+      <head>
+        {/* Applied before first paint so a dark-theme visitor never sees a
+            white flash. Inline by necessity: any external script is already
+            too late. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('v4u.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}`,
+          }}
+        />
+      </head>
+      <body style={{ fontFamily: "var(--font-sans), ui-sans-serif, system-ui, sans-serif" }}>
+        <a href="#main" className="skip-link">
           Skip to content
         </a>
-        <header className="border-b border-slate-200 dark:border-slate-800">
-          <nav
-            aria-label="Main"
-            className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 text-sm"
-          >
-            <Link href="/" className="font-semibold tracking-tight">
-              Vectorize
-            </Link>
-            <Link href="/convert" className="text-slate-600 hover:underline dark:text-slate-300">
-              Convert
-            </Link>
-            <Link href="/batch" className="text-slate-600 hover:underline dark:text-slate-300">
-              Batch
-            </Link>
-            <Link
-              href="/convert-for-cricut"
-              className="text-slate-600 hover:underline dark:text-slate-300"
-            >
-              For Cricut
-            </Link>
-            <Link
-              href="/account"
-              className="ml-auto text-slate-600 hover:underline dark:text-slate-300"
-            >
-              Account
-            </Link>
-          </nav>
-        </header>
-        <main id="main">{children}</main>
-        <footer className="mt-16 border-t border-slate-200 px-4 py-10 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          <div className="mx-auto max-w-6xl space-y-2">
-            <p>
-              Free previews are rate-limited for normal human use. Files are deleted
-              automatically: 24 hours on the free tier, 30 days on paid plans.
-            </p>
-            <p>
-              We store statistics about your images — never the pixels — after deletion, to
-              improve results.
-            </p>
-          </div>
+        <SiteHeader />
+        <main
+          id="main"
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            borderLeft: "1px solid var(--ink-100)",
+            borderRight: "1px solid var(--ink-100)",
+            background: "var(--ink-0)",
+            minHeight: "80vh",
+          }}
+        >
+          {children}
+        </main>
+        <footer
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: "var(--space-6) 20px",
+            display: "flex",
+            gap: 16,
+            flexWrap: "wrap",
+            fontSize: "var(--text-xs)",
+            color: "var(--ink-400)",
+          }}
+        >
+          <span>© 2026 Vectorize4u</span>
+          <span>
+            We delete your files after 24 hours on free, 30 days on paid plans. They are never
+            used to train anything.
+          </span>
         </footer>
       </body>
     </html>

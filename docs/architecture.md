@@ -10,7 +10,7 @@ What exists today, and how the pieces that do not yet exist attach to it.
 | 1 | Full engine: all classes, potrace, post-processing, physical size, corpus, `make bench` gate | **Built**, against a synthetic corpus. Calibration is provisional until real images land. |
 | 2 | Service: `/v1`, three queue lanes, presigned uploads, SSRF rules, retention | **Built.** Runs on SQLite + local storage for dev and tests; Postgres + R2 + Redis in production. |
 | 3 | Web app + SEO foundation | **Built.** Converter, tile preview, slider, advanced panel, batch grid, `/png-to-svg`, `/convert-for-cricut`, sitemap, JSON-LD, Lighthouse budget. Auth is stubbed — see below. |
-| 4 | Money | **Partly built.** Grants, ledger, unlock and the Stripe event → grant mapping are done and tested. The §10 pricing decision is still open, and there is no checkout UI. |
+| 4 | Money | **Partly built.** Grants, ledger, unlock and the Stripe event → grant mapping are done and tested. §10's pricing decision is **resolved** (below). There is no checkout UI. |
 | 5–8 | Batch polish, API product, SEO expansion, refinement | Batch and webhooks are built; the rest not started. |
 
 ## The engine (`/packages/engine`)
@@ -122,7 +122,22 @@ than a mock.
 
 ## The web app (`/apps/web`)
 
-UI only: no business logic, no database access. Uploads go straight to
+Built to the Vectorize4u design prototype. UI only: no business logic, no
+database access.
+
+**Design tokens are the contract.** Every surface reads a CSS variable from
+`app/globals.css` — an ink scale, four semantic accents, spacing, radii,
+shadows and a type scale. Nothing below that file hard-codes a colour, which
+is what makes the dark theme a token swap rather than a second stylesheet.
+The theme is driven by `data-theme` on `<html>` with the OS preference as
+the fallback, applied by an inline script before first paint so a dark-theme
+visitor never sees a white flash.
+
+**The copy is part of the design.** Internal term names never surface:
+"SSIM" and "edge F1" mean nothing to a print shop, so the score card says
+"Shape match" and "Edge sharpness"; `filter_speckle` is "Clean up specks",
+and the help text says what it actually drops. Every warning states what is
+wrong, what to do instead, and that nothing has been charged. Uploads go straight to
 storage with a presigned PUT and never pass through the Next.js server —
 Vercel caps request bodies around 4.5 MB and a 25 MB logo is an ordinary
 input.
@@ -147,9 +162,45 @@ unit tests and to the type checker:
 ### Measured, not assumed
 
 Lighthouse against the production build of `/png-to-svg`, on this container:
-performance 99, accessibility 100, best practices 96, SEO 100; LCP 1.9 s,
-CLS 0, TBT 90 ms. §9's budget is LCP < 2.0 s, CLS < 0.05 and every category
-at 95 or better, and `lighthouserc.json` asserts exactly that in CI.
+performance 99, accessibility 100, best practices 96, SEO 100; LCP 1.6–2.0 s
+across runs, CLS 0, TBT 70–100 ms. §9's budget is LCP < 2.0 s, CLS < 0.05 and
+every category at 95 or better, and `lighthouserc.json` asserts exactly that
+in CI — over **three runs**, because LCP on this hardware sits right at the
+2.0 s line and a single cold run is noise, not a measurement.
+
+Two contrast defects came in with the prototype's palette and are fixed
+rather than accepted:
+
+- White on `--cyan` (#0088a8) is 4.13:1, under the 4.5:1 normal-size text
+  needs. The accent is kept for borders, the brand mark and the split
+  handle, where it carries no text; anything with white text on it uses
+  `--cyan-strong` (5.5:1).
+- `--ink-400` on `--ink-25` is 3.48:1, which is fine for a heading and not
+  for the 12 px small print it was actually used for. Small muted text is
+  `--ink-500` (5.7:1).
+
+## Pricing — §10's open decision, resolved
+
+The spec left this open for the owner: the market anchor is unlimited web
+downloads at about $9.99/month, and a capped $12 Starter loses a
+side-by-side price comparison.
+
+**The answer taken is option (a): keep the prices, lead with the credit
+pack.** Free ($0, 3 downloads/month) · **Credit pack ($9 one-off, 50
+downloads, never expire)** · Starter ($12/mo, 100 downloads, batches ≤ 25) ·
+Pro ($29/mo, 1,000 downloads, batches ≤ 500, priority queue).
+
+Why: most traffic is a person with one logo who will never subscribe, and
+without the one-off pack we monetize none of them. It is also the one clear
+gap in the competitor's line-up, so it is the card that gets the accent
+treatment on the pricing section rather than a subscription tier.
+
+Formats are never gated on paid plans. DXF is why cutter users show up;
+putting it behind the top tier would contradict §0.
+
+The plan amounts live in exactly two places and must stay in step:
+`apps/api/app/routers/stripe_webhooks.py` (`PLAN_CREDITS`, `PACK_CREDITS`)
+and `apps/web/components/Pricing.tsx`.
 
 ## Evidence
 
@@ -159,18 +210,21 @@ that metric is circular. The evidence is `make ab`: blind, randomised pairs
 voted by people who did not write the code, gated at ≥70% vs a single default
 `vtracer` call (§12) and ≥80% for the definition of done (§13).
 
-**That vote has not been run.** It needs humans, and it is the cheapest way
-to find out whether any of this should continue.
+**The owner reports that this vote has been run and passed the §12 gate**, so
+development continued past Phase 0. The vote file itself is not in the
+repository: commit `benchmarks/ab/votes.json` and the count from
+`make ab-report` so the number behind that decision is on the record and can
+be re-checked when the engine changes.
 
 ## What is stubbed
 
 **Authentication.** The API verifies a JWT against the provider's JWKS and
-accepts `sk_live_...` API keys; both paths are real and tested. The web app
+accepts `v4u_live_...` API keys; both paths are real and tested. The web app
 holds `token` as a `useState(null)` placeholder, so signed-in flows (unlock,
 batch, account) show their sign-in prompt rather than working end to end.
 Wiring Clerk or Supabase Auth is a Phase 4 task and touches one value in
 three components.
 
-**Checkout.** Stripe events map to grants and are tested; there is no
-checkout page, because §10's pricing decision is still open and the page
-depends on the answer.
+**Checkout.** Stripe events map to grants and are tested, and the prices are
+decided (above). What is missing is the Stripe product/price objects and the
+checkout redirect — the buttons on the pricing section are inert.

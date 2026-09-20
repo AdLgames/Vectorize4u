@@ -85,7 +85,7 @@ Changing a term, weight, radius or baseline in `score.py` **must** bump
 different versions are never compared, and `make bench` refuses to compare
 them.
 
-## The blind A/B (`make ab`) — not yet run
+## The blind A/B (`make ab`)
 
 ```bash
 make ab              # writes benchmarks/ab/out/ab-vtracer-default.html
@@ -100,6 +100,12 @@ free binary does not, and stopping is the correct outcome.
 
 Do not substitute `make bench` for this. Best-of-N selected by a score always
 beats a single call *on that score*.
+
+**Status:** the owner reports this vote was run and passed the §12 gate.
+`benchmarks/ab/votes.json` is not in the repository, so the number is not on
+the record — commit the votes file and the `make ab-report` output, and
+re-run the vote whenever `score_version` or the preset sets change, since a
+pass on one engine version says nothing about the next.
 
 ## Running the whole stack locally
 
@@ -150,8 +156,9 @@ run it caught two bugs that unit tests and the type checker could not see
   picked up automatically. Until then, `engine/calibration.json`'s `k_class`
   values are provisional bootstrap numbers, not calibration, and the category
   means are indicative only.
-- **The A/B vote has not been run.** See above. This is the gate on all
-  further work.
+- **The A/B vote's result is not in the repository.** The owner reports it
+  passed; `benchmarks/ab/votes.json` should be committed so the number is
+  auditable.
 - **Latency was measured on a 4-core container**, not on the worker hardware
   §2 assumes: median ~5.2 s, p95 ~6.0 s on the synthetic corpus at
   `standard`. The photo fixture takes ~27 s and is the known outlier — a
@@ -163,8 +170,9 @@ run it caught two bugs that unit tests and the type checker could not see
 - **Web auth is a placeholder.** The API's JWT and API-key paths are real and
   tested; the web app has not been wired to an identity provider, so unlock,
   batch and account show their sign-in prompt instead of working.
-- **No checkout page.** Stripe events map to grants and reconcile, but
-  §10's pricing decision is still open and the page depends on the answer.
+- **No checkout page.** Stripe events map to grants and reconcile, and the
+  prices are decided, but the Stripe product/price objects and the checkout
+  redirect are not wired, so the pricing buttons are inert.
 - **Rate limiting falls back to per-process memory** when Redis is absent.
   That is not a real limit across replicas, and it is refused in production.
 - **Preview tiles are one tile, not a grid.** Panning re-renders the whole

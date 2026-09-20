@@ -288,7 +288,7 @@ def test_api_key_job_is_charged_on_completion(client, auth, funded, logo_png):
 
 def test_api_key_is_shown_once(client, auth, user):
     created = client.post("/v1/account/keys", json={"label": "one"}, headers=auth).json()
-    assert created["key"].startswith("sk_live_")
+    assert created["key"].startswith("v4u_live_")
     listed = client.get("/v1/account/keys", headers=auth).json()
     assert listed[0]["key"] is None
 

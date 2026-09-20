@@ -67,6 +67,8 @@ def job_response(job: Job, *, principal: Principal) -> JobResponse:
         id=job.id,
         status=job.status,  # type: ignore[arg-type]
         kind=job.kind,
+        source_width=job.source_w,
+        source_height=job.source_h,
         classification=job.classification,
         classification_confidence=job.classification_confidence,
         quality=quality,

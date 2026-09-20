@@ -199,6 +199,10 @@ class Options:
     max_colors: int | None = None
     simplify: bool = True
     keep_background: bool = True
+    # Overrides each candidate's `filter_speckle`. The UI exposes this
+    # because a phone photo of a sign and a clean export need very
+    # different amounts of speckle removal, and the difference is visible.
+    despeckle: int | None = None
     alpha_mode: AlphaMode = "auto"
     output_width: float | None = None
     output_height: float | None = None

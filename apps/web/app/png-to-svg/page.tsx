@@ -41,30 +41,30 @@ const FAQ = [
 
 export default function PngToSvgPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-12 px-4 py-10">
+    <div style={{ padding: "40px 20px 64px", display: "grid", gap: "var(--space-8)" }}>
       <SoftwareApplicationLd
         name="PNG to SVG converter"
         description="Convert PNG images to clean, editable SVG files."
       />
-      <div className="space-y-4">
-        <h1 className="text-3xl font-semibold tracking-tight">PNG to SVG converter</h1>
-        <p className="max-w-2xl text-lg text-slate-600 dark:text-slate-300">
+      <div style={{ maxWidth: 620 }}>
+        <h1 style={{ fontSize: "var(--text-h1)", margin: "0 0 12px" }}>PNG to SVG converter</h1>
+        <p style={{ fontSize: "var(--text-lg)", color: "var(--ink-500)", margin: 0 }}>
           Drop a PNG below. You’ll get a free, zoomable preview of the traced result and a
           quality score before you decide whether to buy it.
         </p>
       </div>
 
-      <Converter heading="Convert your PNG" />
+      <Converter />
 
-      <section className="max-w-3xl space-y-4">
-        <h2 className="text-xl font-semibold">What actually happens to your PNG</h2>
-        <p className="text-slate-600 dark:text-slate-300">
+      <section style={{ maxWidth: "68ch", display: "grid", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-h2)", margin: 0 }}>What actually happens to your PNG</h2>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
           A PNG is a grid of pixels; an SVG is a set of shapes. Converting between them
           means deciding where one colour region ends and the next begins — and there is
           no single right answer, which is why the same file looks good in one tool and
           bad in another.
         </p>
-        <p className="text-slate-600 dark:text-slate-300">
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
           We don’t make that decision once. We clean the image, run several traces with
           different settings in parallel, render each result back to pixels, and compare
           them against the cleaned original. The one that matches best — without exploding

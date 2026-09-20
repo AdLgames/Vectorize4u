@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 
 export default function AccountPage() {
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-10">
-      <h1 className="text-3xl font-semibold tracking-tight">Your account</h1>
+    <div style={{ padding: "40px 20px 64px", display: "grid", gap: "var(--space-5)" }}>
+      <h1 style={{ fontSize: "var(--text-h1)", margin: 0 }}>Account</h1>
       <AccountPanel />
     </div>
   );

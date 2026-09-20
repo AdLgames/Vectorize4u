@@ -40,16 +40,16 @@ const FAQ = [
 
 export default function CricutPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-12 px-4 py-10">
+    <div style={{ padding: "40px 20px 64px", display: "grid", gap: "var(--space-8)" }}>
       <SoftwareApplicationLd
         name="Image to Cricut SVG converter"
         description="Convert images to cut-ready SVG and DXF at a specified physical size."
       />
-      <div className="space-y-4">
-        <h1 className="text-3xl font-semibold tracking-tight">
+      <div style={{ maxWidth: 620 }}>
+        <h1 style={{ fontSize: "var(--text-h1)", margin: "0 0 12px" }}>
           Convert an image for Cricut
         </h1>
-        <p className="max-w-2xl text-lg text-slate-600 dark:text-slate-300">
+        <p style={{ fontSize: "var(--text-lg)", color: "var(--ink-500)", margin: 0 }}>
           Cut files fail for boring reasons: the wrong scale, paths with too many points,
           specks that become stray cuts. Tell us how wide the finished piece should be and
           we’ll handle the rest.
@@ -58,15 +58,11 @@ export default function CricutPage() {
 
       {/* cutIntent makes the width question mandatory, and DXF is on by
           default because it is why cutter users show up (§10). */}
-      <Converter
-        heading="Upload your design"
-        cutIntent
-        defaultFormats={["svg", "dxf"]}
-      />
+      <Converter cutIntent defaultFormats={["svg", "dxf"]} />
 
-      <section className="max-w-3xl space-y-4">
-        <h2 className="text-xl font-semibold">Before you press cut</h2>
-        <ol className="list-decimal space-y-2 pl-5 text-slate-600 dark:text-slate-300">
+      <section style={{ maxWidth: "68ch", display: "grid", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-h2)", margin: 0 }}>Before you press cut</h2>
+        <ol style={{ color: "var(--ink-500)", margin: 0, paddingLeft: 20, display: "grid", gap: 8 }}>
           <li>
             Set the width above. Measure the finished piece, not the screen.
           </li>

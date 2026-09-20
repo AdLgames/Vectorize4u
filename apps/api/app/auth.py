@@ -1,6 +1,6 @@
 """Authentication: API keys and the auth provider's JWT.
 
-Two callers, one identity type. API keys are `sk_live_...`; we store the
+Two callers, one identity type. API keys are `v4u_live_...`; we store the
 SHA-256 hash and show the plaintext exactly once (§6). JWTs are verified
 against the provider's JWKS — we do not hand-roll auth, and we do not trust
 an unverified `sub`.
@@ -23,7 +23,7 @@ from app.config import settings
 from app.db import get_session
 from app.models import ApiKey, User, utcnow
 
-KEY_PREFIX = "sk_live_"
+KEY_PREFIX = "v4u_live_"
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,10 @@ class JobOptions(BaseModel):
     detail: Literal["low", "balanced", "high"] = "balanced"
     simplify: bool = True
     keep_background: bool = True
+    # "Clean up specks" in the UI: drops shapes smaller than roughly
+    # despeckle x 3 px. Exposed because a scanned logo and a clean export
+    # need very different amounts of it, and the difference is visible.
+    despeckle: int = Field(default=4, ge=0, le=16)
     alpha_mode: Literal["auto", "straight", "premultiplied"] = "auto"
     output_width: float | None = Field(default=None, gt=0, le=10_000)
     output_height: float | None = Field(default=None, gt=0, le=10_000)
@@ -89,6 +93,8 @@ class JobResponse(BaseModel):
     id: str
     status: Literal["queued", "processing", "complete", "failed", "expired"]
     kind: str
+    source_width: int | None = None
+    source_height: int | None = None
     classification: str | None = None
     classification_confidence: float | None = None
     quality: Quality | None = None
