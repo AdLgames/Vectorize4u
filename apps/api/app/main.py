@@ -61,7 +61,14 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Preview-Remaining", "X-Turnstile-Required", "Retry-After"],
+    expose_headers=[
+        "X-Preview-Remaining",
+        "X-Turnstile-Required",
+        "Retry-After",
+        "RateLimit-Limit",
+        "RateLimit-Remaining",
+        "RateLimit-Reset",
+    ],
 )
 
 app.include_router(uploads.router)
@@ -75,10 +82,26 @@ app.include_router(files.router)
 if not settings().is_production and settings().dev_auth_enabled:
     # Mounted only outside production, and only when explicitly switched on.
     # Settings.check() additionally refuses to boot production with it set.
-    log.warning(
-        "development sign-in is enabled at POST /v1/dev/session — this is an auth bypass"
-    )
+    log.warning("development sign-in is enabled at POST /v1/dev/session — this is an auth bypass")
     app.include_router(dev_auth.router)
+
+
+@app.middleware("http")
+async def _rate_limit_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Tell clients where they stand before they hit the wall.
+
+    A 429 that arrives with no warning is indistinguishable from an outage
+    to the integration on the other end; RateLimit-Remaining lets a well
+    -behaved client slow down on its own.
+    """
+    response = await call_next(request)
+    state = getattr(request.state, "rate_limit", None)
+    if state:
+        limit, remaining, reset = state
+        response.headers["RateLimit-Limit"] = str(limit)
+        response.headers["RateLimit-Remaining"] = str(remaining)
+        response.headers["RateLimit-Reset"] = str(reset)
+    return response
 
 
 @app.exception_handler(HTTPException)
@@ -90,9 +113,7 @@ async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
 async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     # Never leak an internal message to the caller; Sentry gets the trace.
     log.exception("unhandled error on %s", request.url.path)
-    return errors.problem_response(
-        request, errors.internal(detail="an internal error occurred")
-    )
+    return errors.problem_response(request, errors.internal(detail="an internal error occurred"))
 
 
 @app.get("/health")

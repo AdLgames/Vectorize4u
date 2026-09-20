@@ -63,6 +63,10 @@ class User(Base):
     # A projection of credit_ledger, kept for cheap reads. Never authoritative.
     credits_cached: Mapped[int] = mapped_column(Integer, default=0)
     plan: Mapped[str] = mapped_column(String(32), default="free")
+    # §8 caps API overage at 3x the plan price unless a customer explicitly
+    # opts out. Opting out is a deliberate, recorded act — never a default,
+    # and never something a runaway loop can do on the customer's behalf.
+    overage_cap_opt_out: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -180,9 +184,7 @@ class JobCandidate(Base):
     __tablename__ = "job_candidates"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: new_id("cnd"))
-    job_id: Mapped[str] = mapped_column(
-        ForeignKey("jobs.id", ondelete="CASCADE"), index=True
-    )
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     params: Mapped[dict[str, Any]] = mapped_column(JSONType)
     score: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
     fidelity: Mapped[float | None] = mapped_column(Float)
@@ -279,9 +281,7 @@ class IdempotencyRecord(Base):
     """§6 — a retried POST returns the original job and never charges twice."""
 
     __tablename__ = "idempotency_records"
-    __table_args__ = (
-        UniqueConstraint("scope", "user_key", "key", name="uq_idempotency"),
-    )
+    __table_args__ = (UniqueConstraint("scope", "user_key", "key", name="uq_idempotency"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: new_id("idm"))
     scope: Mapped[str] = mapped_column(String(64))
@@ -315,7 +315,22 @@ class StripeEvent(Base):
 
 
 __all__ = [
-    "ApiKey", "Base", "Batch", "CreditGrant", "CreditLedger", "IdempotencyRecord",
-    "Job", "JobCandidate", "JobEvent", "StripeEvent", "Subscription", "Upload",
-    "UsageDaily", "User", "WebhookDelivery", "func", "new_id", "utcnow",
+    "ApiKey",
+    "Base",
+    "Batch",
+    "CreditGrant",
+    "CreditLedger",
+    "IdempotencyRecord",
+    "Job",
+    "JobCandidate",
+    "JobEvent",
+    "StripeEvent",
+    "Subscription",
+    "Upload",
+    "UsageDaily",
+    "User",
+    "WebhookDelivery",
+    "func",
+    "new_id",
+    "utcnow",
 ]

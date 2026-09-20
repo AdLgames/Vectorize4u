@@ -15,7 +15,7 @@ from typing import Any
 from app import credits
 from app.db import session_scope
 from app.jobs import log_event
-from app.models import Batch, Job, JobCandidate, utcnow
+from app.models import Batch, Job, JobCandidate, UsageDaily, User, utcnow
 from app.storage import ObjectNotFound, object_key, storage
 from celery.exceptions import Reject
 from sqlalchemy import select
@@ -129,10 +129,12 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
 
     tier = source_key.split("/", 1)[0]
     output_keys: dict[str, str] = {}
+    output_bytes = 0
     for fmt, blob in result.outputs.items():
         key = object_key(tier, "output", job_id, f"{job_id}.{fmt}")  # type: ignore[arg-type]
         storage().put(key, blob, content_type=CONTENT_TYPES.get(fmt, "application/octet-stream"))
         output_keys[fmt] = key
+        output_bytes += len(blob)
 
     with session_scope() as session:
         job = session.get(Job, job_id)
@@ -182,18 +184,34 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
         # Charging, stated once: API jobs are debited on successful
         # completion; web jobs at unlock; failed jobs never (§6).
         if kind == "api" and job.user_id and job.credits_charged == 0:
+            owner = session.get(User, job.user_id)
+            plan = owner.plan if owner else "free"
             try:
-                credits.spend(
-                    session, job.user_id, amount=1, reason="api_job",
+                credits.spend_with_overage(
+                    session,
+                    job.user_id,
+                    plan=plan,
+                    amount=1,
+                    reason="api_job",
                     root_job_id=job.root_job_id,
+                    opted_out_of_cap=bool(owner and owner.overage_cap_opt_out),
                 )
                 job.credits_charged = 1
             except credits.AlreadyCharged:
                 job.credits_charged = 0
-            except credits.InsufficientCredits:
-                # The work is done and the customer has the result; flag it
-                # rather than deleting output they can already see.
-                log_event(session, job, "credit_shortfall", {"amount": 1})
+            except (credits.InsufficientCredits, credits.OverageCapReached) as exc:
+                # The work is done and the customer already has the result,
+                # so deleting it now would be theatre. Record the shortfall;
+                # the *next* request is refused at the door by
+                # `assert_can_afford`, which is where a cap belongs.
+                log_event(
+                    session,
+                    job,
+                    "credit_shortfall",
+                    {"amount": 1, "reason": type(exc).__name__},
+                )
+
+        _record_usage(session, job, output_bytes)
 
         log_event(
             session, job, "completed",
@@ -228,6 +246,33 @@ def _engine_options(blob: dict[str, Any]) -> Any:
         min_node_spacing_mm=blob.get("min_node_spacing_mm", 0.1),
         formats=formats,
     )
+
+
+def _record_usage(session: Any, job: Job, bytes_out: int) -> None:
+    """Roll the job into `usage_daily`.
+
+    This is what an invoice and the account page are built from, and it has
+    to survive the job itself being deleted on schedule (§8) — so it is
+    written when the work completes, not derived from jobs later.
+    """
+    if not job.user_id:
+        return
+    from sqlalchemy import select
+
+    day = (job.finished_at or utcnow()).date()
+    row = session.execute(
+        select(UsageDaily).where(
+            UsageDaily.user_id == job.user_id, UsageDaily.date == day
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = UsageDaily(user_id=job.user_id, date=day)
+        session.add(row)
+
+    row.jobs = (row.jobs or 0) + 1
+    row.credits = (row.credits or 0) + (job.credits_charged or 0)
+    row.bytes_in = (row.bytes_in or 0) + (job.source_bytes or 0)
+    row.bytes_out = (row.bytes_out or 0) + bytes_out
 
 
 def _fail(session: Any, job: Job, error_code: str, detail: str) -> None:

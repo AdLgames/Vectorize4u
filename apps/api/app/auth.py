@@ -172,9 +172,7 @@ def _principal_from_bearer(token: str, session: Session) -> Principal:
     user = session.execute(select(User).where(User.id == subject)).scalar_one_or_none()
 
     if user is None and email:
-        incumbent = session.execute(
-            select(User).where(User.email == email)
-        ).scalar_one_or_none()
+        incumbent = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
         if incumbent is not None:
             if not _email_is_verified(claims):
                 # Linking by email is only safe when the provider says the
@@ -217,9 +215,7 @@ def _email_is_verified(claims: dict[str, Any]) -> bool:
     )
 
 
-def optional_principal(
-    request: Request, session: Session = Depends(get_session)
-) -> Principal:
+def optional_principal(request: Request, session: Session = Depends(get_session)) -> Principal:
     """Anonymous is a valid state: previews do not require an account (§7)."""
     header = request.headers.get("authorization", "")
     if not header.lower().startswith("bearer "):
@@ -230,6 +226,43 @@ def optional_principal(
 def required_principal(principal: Principal = Depends(optional_principal)) -> Principal:
     if principal.user is None:
         raise errors.unauthorized()
+    return principal
+
+
+def enforce_api_rate_limit(request: Request, principal: Principal) -> None:
+    """Per-key request rate, by plan (§6: 429 with Retry-After).
+
+    Keyed on the API key rather than the user, so one runaway integration
+    cannot starve that customer's other keys — and so revoking the noisy
+    key is a complete fix.
+
+    Browser sessions are exempt here: the interactive paths have their own
+    limits (previews, tiles) tuned for humans, and a shared per-user rate
+    would make a person opening several tabs look like an attack.
+    """
+    from app import errors, ratelimit
+    from app.catalog import plan_for
+
+    if principal.api_key is None or principal.user is None:
+        return
+
+    limit = plan_for(principal.user.plan).rate_per_minute
+    decision = ratelimit.hit("api", principal.api_key.id, limit, window_s=60)
+
+    # Standard headers, so a client can back off before being told to.
+    request.state.rate_limit = (limit, decision.remaining, decision.retry_after)
+    if not decision.allowed:
+        raise errors.rate_limited(
+            decision.retry_after,
+            f"{limit} requests per minute on the {principal.user.plan} plan",
+        )
+
+
+def rate_limited_principal(
+    request: Request, principal: Principal = Depends(required_principal)
+) -> Principal:
+    """`required_principal`, plus the per-key rate limit."""
+    enforce_api_rate_limit(request, principal)
     return principal
 
 

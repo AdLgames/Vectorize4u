@@ -10,9 +10,17 @@ from sqlalchemy.orm import Session
 
 from app import credits, errors
 from app.auth import Principal, generate_api_key, required_principal
+from app.catalog import OVERAGE_UNIT_CENTS, overage_cap_credits, plan_for
 from app.db import get_session
 from app.models import ApiKey, Job, utcnow
-from app.schemas import AccountResponse, ApiKeyCreateRequest, ApiKeyResponse, GrantResponse
+from app.schemas import (
+    AccountResponse,
+    ApiKeyCreateRequest,
+    ApiKeyResponse,
+    GrantResponse,
+    OverageCapRequest,
+    OverageStatus,
+)
 
 router = APIRouter(prefix="/v1", tags=["account"])
 
@@ -44,15 +52,31 @@ def account(
         ).scalar_one()
     )
 
+    plan = plan_for(user.plan)
+    overage_used = credits.overage_used(session, user.id)
+    cap = overage_cap_credits(user.plan)
+
     return AccountResponse(
         user_id=user.id,
         email=user.email,
         plan=user.plan,
         credits=credits.balance(session, user.id),
+        rate_per_minute=plan.rate_per_minute,
+        overage=OverageStatus(
+            allowed=plan.allows_overage,
+            used=overage_used,
+            cap=cap,
+            unit_cents=OVERAGE_UNIT_CENTS,
+            cap_opted_out=user.overage_cap_opt_out,
+            estimated_cents=overage_used * OVERAGE_UNIT_CENTS,
+        ),
         grants=[
             GrantResponse(
-                id=g.id, source=g.source, amount=g.amount,
-                remaining=g.remaining, expires_at=g.expires_at,
+                id=g.id,
+                source=g.source,
+                amount=g.amount,
+                remaining=g.remaining,
+                expires_at=g.expires_at,
             )
             for g in credits.grants_view(session, user.id)
         ],
@@ -66,18 +90,42 @@ def _free_allowance(plan: str) -> int:
     return settings().free_monthly_downloads if plan == "free" else 0
 
 
+@router.post("/account/overage-cap", response_model=AccountResponse)
+def set_overage_cap(
+    body: OverageCapRequest,
+    principal: Principal = Depends(required_principal),
+    session: Session = Depends(get_session),
+) -> AccountResponse:
+    """Raise or restore the overage ceiling.
+
+    §8 wants the cap on by default and removable only by an explicit act,
+    because the thing it protects against is a customer's own runaway loop
+    — which is, by definition, not something they are watching at the time.
+    """
+    user = principal.user
+    assert user is not None
+    if not plan_for(user.plan).allows_overage:
+        raise errors.conflict("no_overage_on_plan", "this plan has no usage billing")
+    user.overage_cap_opt_out = body.opt_out
+    session.flush()
+    return account(principal=principal, session=session)
+
+
 @router.get("/account/keys", response_model=list[ApiKeyResponse])
 def list_keys(
     principal: Principal = Depends(required_principal),
     session: Session = Depends(get_session),
 ) -> list[ApiKeyResponse]:
-    rows = session.execute(
-        select(ApiKey).where(ApiKey.user_id == principal.user_id)
-    ).scalars().all()
+    rows = (
+        session.execute(select(ApiKey).where(ApiKey.user_id == principal.user_id)).scalars().all()
+    )
     return [
         ApiKeyResponse(
-            id=k.id, key_prefix=k.key_prefix, label=k.label,
-            created_at=k.created_at, revoked_at=k.revoked_at,
+            id=k.id,
+            key_prefix=k.key_prefix,
+            label=k.label,
+            created_at=k.created_at,
+            revoked_at=k.revoked_at,
         )
         for k in rows
     ]
@@ -91,14 +139,15 @@ def create_key(
 ) -> ApiKeyResponse:
     """The plaintext is returned exactly once and never stored (§6)."""
     raw, digest, prefix = generate_api_key()
-    record = ApiKey(
-        user_id=principal.user_id, key_hash=digest, key_prefix=prefix, label=body.label
-    )
+    record = ApiKey(user_id=principal.user_id, key_hash=digest, key_prefix=prefix, label=body.label)
     session.add(record)
     session.flush()
     return ApiKeyResponse(
-        id=record.id, key_prefix=prefix, label=record.label,
-        created_at=record.created_at, key=raw,
+        id=record.id,
+        key_prefix=prefix,
+        label=record.label,
+        created_at=record.created_at,
+        key=raw,
     )
 
 

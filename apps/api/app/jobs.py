@@ -47,6 +47,50 @@ def storage_tier(principal: Principal) -> str:
     return "free"
 
 
+def assert_can_afford(session: Session, principal: Principal) -> None:
+    """Refuse an API job at the door when there is no way to pay for it.
+
+    Charging happens on successful completion (§6), which means a customer
+    past their cap would otherwise have the work done, the CPU spent and
+    the result delivered before anyone noticed. The cap exists to stop a
+    bill running away; checking it only after the work is pointless.
+
+    Web jobs are not checked here: they are charged at unlock, and a
+    preview the customer cannot yet afford to download is exactly the free
+    preview the product is built around.
+    """
+    from app import credits
+    from app.catalog import OVERAGE_UNIT_CENTS, overage_cap_credits, plan_for
+
+    user = principal.user
+    if user is None or not principal.is_api:
+        return
+
+    if credits.balance(session, user.id) > 0:
+        return
+
+    plan = plan_for(user.plan)
+    if not plan.allows_overage:
+        raise errors.payment_required("out of credits", balance=0)
+
+    if user.overage_cap_opt_out:
+        return
+
+    cap = overage_cap_credits(user.plan)
+    used = credits.overage_used(session, user.id)
+    if used >= cap:
+        raise errors.ProblemError(
+            402,
+            "overage_cap_reached",
+            (
+                f"this account has used its ${cap * OVERAGE_UNIT_CENTS / 100:.2f} "
+                "overage limit for the month. Raise the cap in your account "
+                "settings, or buy credits."
+            ),
+            extra={"overage_used": used, "overage_cap": cap},
+        )
+
+
 def fingerprint(payload: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

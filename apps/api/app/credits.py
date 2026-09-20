@@ -23,15 +23,33 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import CreditGrant, CreditLedger, User, utcnow
+from app.catalog import overage_cap_credits
+from app.models import CreditGrant, CreditLedger, User, func, utcnow
 
 # Grants that never expire, in the order they are consumed *last*.
 NEVER_EXPIRES = ("pack", "promo")
 API_ROLLOVER_MULTIPLE = 3
 
+#: Overage rides the grant system so the ledger stays the only truth.
+OVERAGE_SOURCE = "api_overage"
+
 
 class InsufficientCredits(Exception):
     pass
+
+
+class OverageCapReached(Exception):
+    """Past the hard ceiling on billable overage (§8).
+
+    Distinct from InsufficientCredits: the customer *could* have kept
+    going, and stopping them is a deliberate protection rather than an
+    empty wallet. The two want different words in the API response.
+    """
+
+    def __init__(self, used: int, cap: int) -> None:
+        super().__init__(f"overage cap reached: {used} of {cap} credits")
+        self.used = used
+        self.cap = cap
 
 
 class AlreadyCharged(Exception):
@@ -70,9 +88,7 @@ def open_grants(session: Session, user_id: str, *, for_update: bool = False) -> 
     SQLite the clause is ignored, which is fine because the test suite is
     single-writer by construction.
     """
-    stmt = select(CreditGrant).where(
-        CreditGrant.user_id == user_id, CreditGrant.remaining > 0
-    )
+    stmt = select(CreditGrant).where(CreditGrant.user_id == user_id, CreditGrant.remaining > 0)
     if for_update and session.bind is not None and session.bind.dialect.name == "postgresql":
         stmt = stmt.with_for_update()
     grants = list(session.execute(stmt).scalars())
@@ -201,6 +217,95 @@ def spend(
     return entries
 
 
+def overage_used(session: Session, user_id: str, *, since: datetime | None = None) -> int:
+    """Billable overage in the current period.
+
+    Overage is modelled as a grant we hand out and bill for afterwards,
+    rather than as a negative balance. That keeps the one rule the whole
+    ledger rests on intact — every balance is the sum of its entries — and
+    it means the amount to invoice is a query, not a reconstruction.
+    """
+    start = since or _period_start()
+    total = session.execute(
+        select(func.coalesce(func.sum(CreditGrant.amount), 0)).where(
+            CreditGrant.user_id == user_id,
+            CreditGrant.source == OVERAGE_SOURCE,
+            CreditGrant.created_at >= start,
+        )
+    ).scalar_one()
+    return int(total)
+
+
+def grant_overage(
+    session: Session,
+    user_id: str,
+    *,
+    plan: str,
+    amount: int = 1,
+    opted_out_of_cap: bool = False,
+) -> CreditGrant:
+    """Extend credit past a zero balance, up to the plan's hard cap.
+
+    Raises OverageCapReached rather than letting the bill run: §8 sets this
+    ceiling precisely so that a customer's runaway retry loop costs them a
+    known maximum instead of a surprise invoice.
+    """
+    cap = overage_cap_credits(plan)
+    if cap <= 0:
+        raise InsufficientCredits("this plan does not allow overage")
+
+    used = overage_used(session, user_id)
+    if not opted_out_of_cap and used + amount > cap:
+        raise OverageCapReached(used, cap)
+
+    return grant(
+        session,
+        user_id,
+        source=OVERAGE_SOURCE,
+        amount=amount,
+        expires_at=None,
+        reason="grant_api_overage",
+    )
+
+
+def spend_with_overage(
+    session: Session,
+    user_id: str,
+    *,
+    plan: str,
+    amount: int = 1,
+    reason: str,
+    root_job_id: str | None = None,
+    opted_out_of_cap: bool = False,
+) -> list[CreditLedger]:
+    """Spend credits, falling through to billable overage if allowed.
+
+    The order matters: prepaid credit is always consumed before overage is
+    created, or a customer with an unspent pack would be invoiced for usage
+    they had already paid for.
+    """
+    try:
+        return spend(session, user_id, amount=amount, reason=reason, root_job_id=root_job_id)
+    except InsufficientCredits:
+        pass
+
+    available = balance(session, user_id)
+    shortfall = amount - available
+    grant_overage(session, user_id, plan=plan, amount=shortfall, opted_out_of_cap=opted_out_of_cap)
+    return spend(session, user_id, amount=amount, reason=reason, root_job_id=root_job_id)
+
+
+def _period_start() -> datetime:
+    """Billing periods are calendar months here.
+
+    Stripe's own period boundaries differ per subscription; when invoicing
+    is wired up, pass the subscription's `current_period_start` instead of
+    relying on this.
+    """
+    now = _now()
+    return datetime(now.year, now.month, 1, tzinfo=UTC)
+
+
 def refund(
     session: Session,
     user_id: str,
@@ -246,9 +351,7 @@ def refund(
     return spent
 
 
-def apply_api_rollover_cap(
-    session: Session, user_id: str, monthly_amount: int
-) -> int:
+def apply_api_rollover_cap(session: Session, user_id: str, monthly_amount: int) -> int:
     """On renewal, cap total remaining api_monthly credits at 3× the monthly.
 
     Expires the oldest excess with a `rollover_cap` ledger entry, so the
@@ -285,9 +388,7 @@ def apply_api_rollover_cap(
 def expire_lapsed(session: Session, user_id: str) -> int:
     """Zero out grants past their expiry, with a ledger entry for each."""
     now = _now()
-    stmt = select(CreditGrant).where(
-        CreditGrant.user_id == user_id, CreditGrant.remaining > 0
-    )
+    stmt = select(CreditGrant).where(CreditGrant.user_id == user_id, CreditGrant.remaining > 0)
     expired = 0
     for record in session.execute(stmt).scalars():
         expires = _as_aware(record.expires_at)
@@ -320,9 +421,7 @@ def monthly_free_grant(session: Session, user_id: str, amount: int) -> CreditGra
     period = now.strftime("%Y-%m")
     reason = f"grant_free_monthly:{period}"
     existing = session.execute(
-        select(CreditLedger).where(
-            CreditLedger.user_id == user_id, CreditLedger.reason == reason
-        )
+        select(CreditLedger).where(CreditLedger.user_id == user_id, CreditLedger.reason == reason)
     ).scalar_one_or_none()
     if existing is not None:
         return None
@@ -361,9 +460,7 @@ def rebuild_projections(session: Session, user_id: str) -> dict[str, int]:
     projection is the thing that is wrong.
     """
     totals: dict[str, int] = {}
-    entries = session.execute(
-        select(CreditLedger).where(CreditLedger.user_id == user_id)
-    ).scalars()
+    entries = session.execute(select(CreditLedger).where(CreditLedger.user_id == user_id)).scalars()
     for entry in entries:
         if entry.grant_id is None:
             continue

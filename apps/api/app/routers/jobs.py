@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session
 
 from app import credits, errors, ratelimit
 from app import jobs as jobsvc
-from app.auth import Principal, client_ip, optional_principal, required_principal
+from app.auth import (
+    Principal,
+    client_ip,
+    optional_principal,
+    rate_limited_principal,
+    required_principal,
+)
 from app.config import settings
 from app.db import get_session, session_factory
 from app.fetcher import UnsafeUrl, fetch
@@ -155,19 +161,25 @@ def vectorize(
     request: Request,
     response: Response,
     body: VectorizeRequest,
-    principal: Principal = Depends(required_principal),
+    principal: Principal = Depends(rate_limited_principal),
     session: Session = Depends(get_session),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     prefer: Annotated[str | None, Header()] = None,
 ) -> JobResponse:
     payload = body.model_dump()
     existing = jobsvc.claim_idempotency(
-        session, scope="vectorize", principal=principal, key=idempotency_key,
+        session,
+        scope="vectorize",
+        principal=principal,
+        key=idempotency_key,
         request_payload=payload,
     )
     if existing is not None:
         # A retried request returns the original job and never charges twice.
         return job_response(existing, principal=principal)
+
+    # Before any bytes are fetched or any CPU is spent.
+    jobsvc.assert_can_afford(session, principal)
 
     tier = jobsvc.storage_tier(principal)
     source_key, size = _resolve_source(session, principal=principal, body=body, tier=tier)
@@ -183,8 +195,12 @@ def vectorize(
         ip_hash=ratelimit.ip_hash(client_ip(request)),
     )
     jobsvc.record_idempotency(
-        session, scope="vectorize", principal=principal, key=idempotency_key,
-        request_payload=payload, job=job,
+        session,
+        scope="vectorize",
+        principal=principal,
+        key=idempotency_key,
+        request_payload=payload,
+        job=job,
     )
     session.commit()
 
@@ -268,7 +284,7 @@ def vectorize_multipart(
     response: Response,
     file: Annotated[UploadFile, File()],
     options: Annotated[str | None, Form()] = None,
-    principal: Principal = Depends(required_principal),
+    principal: Principal = Depends(rate_limited_principal),
     session: Session = Depends(get_session),
 ) -> JobResponse:
     """Direct multipart, for small API clients (§4.3).
@@ -280,14 +296,20 @@ def vectorize_multipart(
     if len(data) > cfg.max_upload_bytes:
         raise errors.too_large(f"body exceeds {cfg.max_upload_bytes} bytes")
 
+    jobsvc.assert_can_afford(session, principal)
+
     parsed = JobOptions.model_validate_json(options) if options else JobOptions()
     tier = jobsvc.storage_tier(principal)
     key = object_key(tier, "source", f"mp_{int(time.time() * 1000)}", "source.bin")  # type: ignore[arg-type]
     storage().put(key, data, content_type=file.content_type or "application/octet-stream")
 
     job = jobsvc.create_job(
-        session, principal=principal, kind="api" if principal.is_api else "sync",
-        options=parsed, source_key=key, source_bytes=len(data),
+        session,
+        principal=principal,
+        kind="api" if principal.is_api else "sync",
+        options=parsed,
+        source_key=key,
+        source_bytes=len(data),
         ip_hash=ratelimit.ip_hash(client_ip(request)),
     )
     session.commit()
@@ -343,11 +365,13 @@ def unlock(
     if job.is_unlocked:
         return job_response(job, principal=principal)
 
-    already_unlocked = session.execute(
-        select(Job).where(
-            Job.root_job_id == job.root_job_id, Job.unlocked_at.is_not(None)
+    already_unlocked = (
+        session.execute(
+            select(Job).where(Job.root_job_id == job.root_job_id, Job.unlocked_at.is_not(None))
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     if already_unlocked is not None:
         job.unlocked_at = already_unlocked.unlocked_at
@@ -458,9 +482,7 @@ def preview_tile(
 
     from app.tiles import render_tile_png
 
-    png = render_tile_png(
-        svg, x=x, y=y, w=w, h=h, scale=scale, watermark=not job.is_unlocked
-    )
+    png = render_tile_png(svg, x=x, y=y, w=w, h=h, scale=scale, watermark=not job.is_unlocked)
     return Response(
         content=png,
         media_type="image/png",

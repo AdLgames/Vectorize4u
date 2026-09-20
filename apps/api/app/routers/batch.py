@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import errors, ratelimit
 from app import jobs as jobsvc
-from app.auth import Principal, client_ip, required_principal
+from app.auth import Principal, client_ip, rate_limited_principal, required_principal
 from app.config import settings
 from app.db import get_session
 from app.models import Batch, Job, Upload, new_id
@@ -41,7 +41,7 @@ def _batch_limit(principal: Principal) -> int:
 @router.post("/batch", response_model=BatchCreateResponse)
 def create_batch(
     body: BatchCreateRequest,
-    principal: Principal = Depends(required_principal),
+    principal: Principal = Depends(rate_limited_principal),
     session: Session = Depends(get_session),
 ) -> BatchCreateResponse:
     cfg = settings()
@@ -89,9 +89,7 @@ def create_batch(
         )
 
     session.flush()
-    return BatchCreateResponse(
-        batch_id=batch.id, slots=slots, expires_in=cfg.upload_url_ttl_s
-    )
+    return BatchCreateResponse(batch_id=batch.id, slots=slots, expires_in=cfg.upload_url_ttl_s)
 
 
 @router.post("/batch/{batch_id}/start", response_model=BatchResponse)
@@ -223,10 +221,7 @@ def _batch_response(session: Session, batch: Batch) -> BatchResponse:
         total=batch.total,
         completed=completed,
         failed=failed,
-        files=[
-            BatchFile(job_id=j.id, status=j.status, error_code=j.error_code)
-            for j in rows
-        ],
+        files=[BatchFile(job_id=j.id, status=j.status, error_code=j.error_code) for j in rows],
         zip_url=zip_url,
     )
 

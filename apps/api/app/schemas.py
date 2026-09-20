@@ -160,6 +160,16 @@ class GrantResponse(BaseModel):
     expires_at: datetime | None
 
 
+class OverageStatus(BaseModel):
+    allowed: bool
+    used: int
+    cap: int
+    unit_cents: int
+    cap_opted_out: bool
+    #: What the overage used so far would cost, in cents.
+    estimated_cents: int
+
+
 class AccountResponse(BaseModel):
     user_id: str
     email: str
@@ -167,6 +177,14 @@ class AccountResponse(BaseModel):
     credits: int
     grants: list[GrantResponse]
     usage_30d: dict[str, int]
+    rate_per_minute: int
+    overage: OverageStatus
+
+
+class OverageCapRequest(BaseModel):
+    #: True removes the 3x ceiling. §8 makes this explicit and deliberate:
+    #: the default protects people from their own retry loops.
+    opt_out: bool
 
 
 class ApiKeyCreateRequest(BaseModel):
