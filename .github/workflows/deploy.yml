@@ -30,10 +30,14 @@ on:
         type: string
         default: ams
       org:
-        description: Fly organisation slug
+        description: >-
+          Fly organisation *slug*, which is not its name — a personal
+          account is displayed under your own name and its slug is
+          "personal". `flyctl orgs list` prints both; so does the first
+          step of this job.
         required: true
         type: string
-        default: chess-930
+        default: personal
       prefix:
         description: >-
           App name prefix (<prefix>-api, <prefix>-worker-preview, …). Fly app
