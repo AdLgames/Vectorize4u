@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+node_modules/
+.next/
+dist/
+out/
+.env
+.env.local
+benchmarks/out/
+benchmarks/ab/out/
+/tmp_scratch/

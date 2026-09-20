@@ -1,0 +1,67 @@
+{
+  "alpha_binary.png": {
+    "label": "LOGO_FLAT",
+    "note": "transparency must survive",
+    "source": "synthetic"
+  },
+  "alpha_dark_straight.png": {
+    "label": "LOGO_FLAT",
+    "note": "must be LEFT ALONE: dividing it creates bright halos",
+    "source": "synthetic"
+  },
+  "alpha_premultiplied.png": {
+    "label": "LOGO_FLAT",
+    "note": "must be detected and divided: no dark halos",
+    "source": "synthetic"
+  },
+  "cmyk_jpeg.jpg": {
+    "label": "LOGO_FLAT",
+    "note": "must come out colour-correct",
+    "source": "synthetic"
+  },
+  "exif_rotated.jpg": {
+    "label": "LOGO_FLAT",
+    "note": "must come out upright",
+    "source": "synthetic"
+  },
+  "line_art.png": {
+    "label": "LINE_ART",
+    "note": "",
+    "source": "synthetic"
+  },
+  "logo_flat.png": {
+    "label": "LOGO_FLAT",
+    "note": "",
+    "source": "synthetic"
+  },
+  "logo_flat_jpeg_artifacts.jpg": {
+    "label": "LOGO_FLAT",
+    "note": "heavy JPEG artifacts: the reference must be cleaned before scoring",
+    "source": "synthetic"
+  },
+  "logo_flat_small.png": {
+    "label": "LOGO_FLAT",
+    "note": "sub-600px: must be upscaled for tracing, not for scoring",
+    "source": "synthetic"
+  },
+  "logo_gradient.png": {
+    "label": "LOGO_GRADIENT",
+    "note": "must warn gradients_banded",
+    "source": "synthetic"
+  },
+  "photo.jpg": {
+    "label": "PHOTO",
+    "note": "expected to score poorly; must warn photo_input",
+    "source": "synthetic"
+  },
+  "screenshot.png": {
+    "label": "SCREENSHOT",
+    "note": "",
+    "source": "synthetic"
+  },
+  "sketch.png": {
+    "label": "SKETCH",
+    "note": "",
+    "source": "synthetic"
+  }
+}
