@@ -116,6 +116,30 @@ jobs:
               --vm-size shared-cpu-1x \
               --volume-size 10
           fi
+          # A Fly Postgres machine that has auto-stopped has no leader, and
+          # every attach then fails with "no active leader found" — which
+          # reads like a broken cluster and is really a sleeping one. Wake
+          # it and wait for it to elect a leader before asking it for
+          # anything.
+          for id in $(flyctl machine list -a "$DB_APP" --json | jq -r '.[].id'); do
+            echo "starting $DB_APP machine $id"
+            flyctl machine start "$id" -a "$DB_APP" || true
+          done
+
+          for attempt in $(seq 1 18); do
+            if flyctl postgres users list -a "$DB_APP" > /dev/null 2>&1; then
+              echo "$DB_APP has a leader"
+              break
+            fi
+            if [ "$attempt" = "18" ]; then
+              echo "$DB_APP never elected a leader. Either its volume is gone, or the"
+              echo "cluster needs recreating: flyctl apps destroy $DB_APP, then re-run"
+              echo "this stage. Managed Postgres (fly mpg) is the supported option."
+              exit 1
+            fi
+            sleep 10
+          done
+
           # Attach per app, not once: each gets its own database user, and
           # each gets DATABASE_URL set on it. The workers write jobs,
           # credits and usage, so they need it too — and app/config.py
