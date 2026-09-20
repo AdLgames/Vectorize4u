@@ -341,6 +341,51 @@ script reads production jobs with `--from db`, which is what
 `job_candidates` and `jobs.profile` are persisted for (§5): calibration can
 be redone from months of real work without having kept a single pixel.
 
+## Centerline tracing: evaluated, not adopted
+
+§0 defers single-line tracing to "Phase 8+" and names the obstacle as
+licensing — autotrace is GPL. That framing does not survive contact: we
+already ship potrace, which is GPLv2, as a subprocess that is never linked
+(docs/licensing.md), so the same arrangement was always available. And it
+turns out not to be needed. `engine/centerline.py` gets a usable centerline
+out of dependencies we already have — scikit-image's skeletonize (BSD) plus
+the curve fitter written for post-processing.
+
+What it produces, from `make centerline-report`:
+
+| fixture | outline nodes | centerline nodes | strokes | width/side |
+|---|---|---|---|---|
+| line_art | 205 | 165 | 44 | 0.009 |
+| sketch | 709 | 382 | 187 | 0.003 |
+| screenshot | 3444 | 513 | 233 | 0.026 |
+| logo_flat | 27 | 25 | 5 | 0.177 |
+| cmyk_jpeg (a filled logo) | 1168 | 24 | 5 | 0.178 |
+
+Three things came out of this that were not obvious beforehand:
+
+1. **Knowing when to use it is the easy part, but not by the obvious
+   statistic.** Stroke width does not travel between image sizes, and
+   "how much ink do the strokes explain" does not separate the cases at all
+   — a filled letter's skeleton is long and wide, so it explains all of its
+   own ink. What separates them is *mean ink width relative to the shorter
+   side of the image*: 0.003–0.026 for line art, sketches and screenshots,
+   0.08–1.0 for filled artwork. An order of magnitude, with a gap.
+2. **The scorer cannot choose between them.** Rendered and scored against
+   the reference, the centerline of `line_art` gets 0.806 where the outline
+   trace gets 0.906 — it is *supposed* to lose, because a uniform-width
+   stroke is not the same shape as the outline. Centerline is a different
+   intent (what the plotter draws), not a better trace, so it has to be an
+   explicit request, never a scored choice.
+3. **The cost is downstream, not in the tracer.** `SvgDoc` models filled
+   paths because that is what both tracers emit and what sliver removal,
+   node spacing, DXF export and the scorer all assume. Open stroked paths
+   need their own route through every one of those, and that — not the
+   licence and not the algorithm — is the work.
+
+So: viable, cheap to prototype, and deliberately not wired into the
+pipeline. It would earn its place alongside a plotter/engraver corpus to
+test against, which we do not have.
+
 ## What is unexercised
 
 **Stripe against a real account.** Everything above is tested against a

@@ -46,3 +46,17 @@ re-open this rather than quietly adding a `gs` call.
 - Competitor output used in `make ab-external` is obtained through a normal
   paid account, kept out of the repository, and used for **internal
   comparison only**. Check the competitor's terms before each round.
+
+## Centerline tracing (evaluated, Phase 8)
+
+§0 records autotrace's GPL as the reason single-line tracing was deferred.
+For the record, that reason does not stand on its own: autotrace could be
+invoked the same way potrace is — a separate binary, a subprocess, never
+linked, no GPL obligation on this code — and the arrangement is already
+documented above.
+
+It is moot in practice. `engine/centerline.py` produces centerlines from
+scikit-image's `skeletonize` (BSD-3-Clause, already a dependency) and the
+curve fitter in `engine/geom.py`, so no new licence enters the picture at
+all. What stopped it being adopted is engineering cost, not licensing —
+see docs/architecture.md.
