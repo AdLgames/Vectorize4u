@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Sans } from "next/font/google";
+import AuthProvider from "@/components/AuthProvider";
 import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
 
@@ -40,8 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#main" className="skip-link">
           Skip to content
         </a>
-        <SiteHeader />
-        <main
+        <AuthProvider>
+          <SiteHeader />
+          <main
           id="main"
           style={{
             maxWidth: 1200,
@@ -52,8 +54,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             minHeight: "80vh",
           }}
         >
-          {children}
-        </main>
+            {children}
+          </main>
+        </AuthProvider>
         <footer
           style={{
             maxWidth: 1200,

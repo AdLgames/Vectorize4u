@@ -10,6 +10,8 @@ import {
   retryBatchFile,
   startBatch,
 } from "@/lib/api";
+import { useAuth } from "./AuthProvider";
+import SignIn from "./SignIn";
 import { Button, Card, Meter, Muted, Notice, Pill, type Tone } from "./ui";
 
 /**
@@ -49,7 +51,8 @@ export default function BatchRunner() {
   const [message, setMessage] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState({ done: 0, total: 0 });
   const [dragOver, setDragOver] = useState(false);
-  const [token] = useState<string | null>(null); // wired to the auth provider in Phase 4
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const { token } = useAuth();
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -76,7 +79,7 @@ export default function BatchRunner() {
   const run = useCallback(
     async (files: File[]) => {
       if (!token) {
-        setMessage("Sign in to run a batch. Batches are stored against your account.");
+        setNeedsSignIn(true);
         return;
       }
       if (files.length > MAX_FILES) {
@@ -152,6 +155,9 @@ export default function BatchRunner() {
   if (!batch) {
     return (
       <>
+        {needsSignIn && !token && (
+          <SignIn reason="Sign in to run a batch" />
+        )}
         {message && (
           <Notice tone="magenta" title="Heads up">
             {message}

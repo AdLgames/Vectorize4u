@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Brand from "./Brand";
+import { useAuth } from "./AuthProvider";
 import { applyTheme, currentTheme, type Theme } from "@/lib/theme";
 
 const NAV = [
@@ -15,6 +16,7 @@ const NAV = [
 
 export default function SiteHeader() {
   const pathname = usePathname();
+  const { email, signedIn, credits } = useAuth();
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => setTheme(currentTheme()), []);
@@ -76,7 +78,49 @@ export default function SiteHeader() {
         })}
       </nav>
 
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        style={{
+          marginLeft: "auto",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          fontSize: "var(--text-sm)",
+        }}
+      >
+        {signedIn ? (
+          <>
+            {credits !== null && (
+              <span style={{ color: "var(--ink-500)" }}>
+                {credits} {credits === 1 ? "credit" : "credits"}
+              </span>
+            )}
+            <span
+              aria-label={email ?? "Signed in"}
+              title={email ?? undefined}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: "var(--radius-full)",
+                background: "var(--cyan-soft)",
+                color: "var(--cyan)",
+                display: "grid",
+                placeItems: "center",
+                fontSize: "var(--text-xs)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+              }}
+            >
+              {(email ?? "?").slice(0, 2)}
+            </span>
+          </>
+        ) : (
+          <Link
+            href="/signin"
+            style={{ color: "var(--ink-500)", textDecoration: "none" }}
+          >
+            Sign in
+          </Link>
+        )}
         <button
           type="button"
           onClick={toggle}

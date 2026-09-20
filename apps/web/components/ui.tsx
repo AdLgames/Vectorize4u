@@ -128,14 +128,11 @@ export function Chip({
   children,
   active,
   onClick,
-  tone = "cyan",
 }: {
   children: ReactNode;
   active?: boolean;
   onClick?: () => void;
-  tone?: Tone;
 }) {
-  const colors = toneColors[tone];
   const interactive = Boolean(onClick);
   return (
     <button

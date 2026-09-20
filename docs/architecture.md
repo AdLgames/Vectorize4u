@@ -10,7 +10,7 @@ What exists today, and how the pieces that do not yet exist attach to it.
 | 1 | Full engine: all classes, potrace, post-processing, physical size, corpus, `make bench` gate | **Built**, against a synthetic corpus. Calibration is provisional until real images land. |
 | 2 | Service: `/v1`, three queue lanes, presigned uploads, SSRF rules, retention | **Built.** Runs on SQLite + local storage for dev and tests; Postgres + R2 + Redis in production. |
 | 3 | Web app + SEO foundation | **Built.** Converter, tile preview, slider, advanced panel, batch grid, `/png-to-svg`, `/convert-for-cricut`, sitemap, JSON-LD, Lighthouse budget. Auth is stubbed — see below. |
-| 4 | Money | **Partly built.** Grants, ledger, unlock and the Stripe event → grant mapping are done and tested. §10's pricing decision is **resolved** (below). There is no checkout UI. |
+| 4 | Money | **Partly built.** Auth, grants, ledger and unlock work end to end; the Stripe event → grant mapping is tested. §10's pricing decision is **resolved** (below). What is missing is checkout: the Stripe price objects and the redirect. |
 | 5–8 | Batch polish, API product, SEO expansion, refinement | Batch and webhooks are built; the rest not started. |
 
 ## The engine (`/packages/engine`)
@@ -147,8 +147,8 @@ are raster: the left is a server-rendered tile of the trace, the right is the
 user's original. Zoom in and the original pixelates while the vector stays
 sharp.
 
-Two bugs the browser smoke test caught on its first run, both invisible to
-unit tests and to the type checker:
+Bugs the browser tests caught, all invisible to unit tests and to the type
+checker:
 
 - Tailwind's preflight sets `img { max-width: 100% }`, which squashed the
   preview tile to its container's width while leaving the height alone. The
@@ -216,15 +216,48 @@ repository: commit `benchmarks/ab/votes.json` and the count from
 `make ab-report` so the number behind that decision is on the record and can
 be re-checked when the engine changes.
 
+## Authentication
+
+**Supabase Auth, magic link.** No password to store, reset, leak or get
+wrong, and the click is itself proof of the address — which the API relies
+on before it will attach a session to an existing account.
+
+The API verifies tokens itself rather than calling Supabase per request: a
+round trip inside every API call would put someone else's uptime in our
+p95. Verification is real — signature, issuer, audience, expiry, against
+the project's published keys — and it covers both signing schemes Supabase
+uses, chosen by the token's own `alg` header with each branch pinning its
+own algorithm list. Reading the algorithm from the token to decide *how* to
+verify is how `alg: none` and HS256/RS256 confusion attacks work; the
+header only picks which configured key to try.
+
+Three identity rules, each with a test:
+
+- **`sub` is the account.** The email is a label, and a change follows it.
+- **Linking by email requires a verified address**, or anyone could claim
+  an existing account by signing up with its address through a provider
+  that does not verify email. An unverified collision is refused with a
+  clear message rather than opening a second account on one address.
+- **Anonymous Supabase sessions are rejected** for account actions. Our
+  anonymous path has no account, so an anonymous user holding credits
+  would be a second identity model.
+
+The browser carries only the **anon** key, which is public by design. The
+Supabase SDK is loaded on demand rather than imported statically: the auth
+provider sits in the root layout, so a static import put 72 kB into the
+first-load bundle of every page, including the two landing pages that exist
+to be indexed and carry a Core Web Vitals budget.
+
+`VEC_DEV_AUTH_ENABLED` provides a local sign-in with no Supabase project.
+It is an auth bypass, so it is off by default, the route is not mounted
+outside development, and `Settings.check()` refuses to boot production
+while it is set. It exists because a magic link cannot be clicked by a
+script, and the path that takes money would otherwise never run in a
+browser here.
+
 ## What is stubbed
 
-**Authentication.** The API verifies a JWT against the provider's JWKS and
-accepts `v4u_live_...` API keys; both paths are real and tested. The web app
-holds `token` as a `useState(null)` placeholder, so signed-in flows (unlock,
-batch, account) show their sign-in prompt rather than working end to end.
-Wiring Clerk or Supabase Auth is a Phase 4 task and touches one value in
-three components.
-
-**Checkout.** Stripe events map to grants and are tested, and the prices are
-decided (above). What is missing is the Stripe product/price objects and the
-checkout redirect — the buttons on the pricing section are inert.
+**Checkout.** Stripe events map to grants and are tested, and the prices
+are decided (above). What is missing is the Stripe price objects and the
+redirect — "Buy 50 credits" is inert. Sign-in and unlock work; only the
+part that takes the money does not.

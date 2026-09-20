@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # tested without cloud credentials; it is refused outside dev/test.
     storage_backend: Literal["r2", "local"] = "local"
     storage_local_dir: str = "./.storage"
+    # Where the browser can reach this API. The local storage backend signs
+    # download URLs itself, and a relative one would resolve against the
+    # *web app's* origin in development, where the two run on different
+    # ports. R2 returns absolute URLs, so this is unused in production.
+    public_api_url: str = "http://127.0.0.1:8000"
     r2_bucket: str = ""
     r2_endpoint_url: str = ""
     r2_access_key_id: str = ""
@@ -49,11 +54,30 @@ class Settings(BaseSettings):
     preview_turnstile_after: int = 5
     tile_limit_per_hour: int = 600
 
-    # Auth
+    # Auth — Supabase.
+    #
+    # Supabase signs session JWTs one of two ways depending on the project's
+    # age and settings, and both are supported because a project can be
+    # migrated between them without the API being redeployed:
+    #
+    #   asymmetric (current) — ES256/RS256, public keys at the project's
+    #     JWKS endpoint. Set `supabase_url` and the endpoint is derived.
+    #   shared secret (legacy) — HS256 signed with the project's JWT secret.
+    #     Set `supabase_jwt_secret`.
+    #
+    # The secret is a *signing* key, not an API key: anything holding it can
+    # mint a token for any user. It never goes near the browser.
+    supabase_url: str = ""
+    supabase_jwt_secret: str = ""
     jwt_issuer: str = ""
-    jwt_audience: str = ""
+    jwt_audience: str = "authenticated"
     jwt_jwks_url: str = ""
     jwt_dev_secret: str = "dev-only-not-a-secret"
+
+    # Local sign-in without a Supabase project, for development and the
+    # browser test. Refused outright in production (see `check`), and the
+    # route that serves it is not even mounted there.
+    dev_auth_enabled: bool = False
 
     # §5: a plain hash of an IPv4 address is reversible by brute force in
     # seconds, so ip_hash is an HMAC under a daily-rotating secret.
@@ -70,6 +94,23 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment in ("staging", "prod")
 
+    @property
+    def jwks_url(self) -> str:
+        """The project's JWKS endpoint, explicit or derived from the URL."""
+        if self.jwt_jwks_url:
+            return self.jwt_jwks_url
+        if self.supabase_url:
+            return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        return ""
+
+    @property
+    def expected_issuer(self) -> str:
+        if self.jwt_issuer:
+            return self.jwt_issuer
+        if self.supabase_url:
+            return f"{self.supabase_url.rstrip('/')}/auth/v1"
+        return ""
+
     def check(self) -> None:
         """Fail at startup rather than at the first paid request."""
         if not self.is_production:
@@ -82,8 +123,13 @@ class Settings(BaseSettings):
         for name in ("ip_hash_secret", "webhook_signing_secret", "jwt_dev_secret"):
             if getattr(self, name).startswith("dev-only"):
                 problems.append(f"VEC_{name.upper()} still holds its development default")
-        if not self.jwt_jwks_url:
-            problems.append("VEC_JWT_JWKS_URL is not configured")
+        if not self.jwks_url and not self.supabase_jwt_secret:
+            problems.append(
+                "no way to verify Supabase tokens: set VEC_SUPABASE_URL "
+                "(asymmetric keys) or VEC_SUPABASE_JWT_SECRET (legacy HS256)"
+            )
+        if self.dev_auth_enabled:
+            problems.append("VEC_DEV_AUTH_ENABLED is on — it is a total auth bypass")
         if not self.stripe_webhook_secret:
             problems.append("VEC_STRIPE_WEBHOOK_SECRET is not configured")
         if problems:

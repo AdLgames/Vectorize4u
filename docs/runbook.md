@@ -138,16 +138,77 @@ Service environment variables (all prefixed `VEC_`):
 that still holds a development default for any of the secrets, or that is
 pointed at the local storage backend.
 
+## Authentication (Supabase)
+
+### Setting up a project
+
+1. Create a Supabase project. Dashboard → **Settings → API** gives you the
+   project URL and the **anon** key. Only those two go in the web app —
+   the service-role key is never needed here, because every privileged
+   action goes through `/v1`, which verifies the session token itself.
+2. Dashboard → **Authentication → URL Configuration → Redirect URLs**: add
+   `http://localhost:3000/auth/callback` and your production equivalent.
+   A missing entry is the usual cause of a magic link that bounces.
+3. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in
+   `apps/web/.env.local`, and `VEC_SUPABASE_URL` in `apps/api/.env`.
+
+The API verifies tokens itself rather than calling Supabase per request —
+a network round trip inside every API call would put someone else's uptime
+in our p95 — but the verification is real: signature, issuer, audience and
+expiry, against the project's published keys.
+
+**Legacy projects** that still sign with a shared secret set
+`VEC_SUPABASE_JWT_SECRET` instead (Settings → API → JWT Secret). Which
+branch runs is chosen by the token's own `alg` header, and each branch pins
+its algorithm list, so a token cannot talk the server into the wrong one.
+**Remove the secret once you migrate to asymmetric keys** — leaving it set
+keeps a second way to mint tokens alive long after anyone remembers it.
+
+### Sign-in without a Supabase project
+
+```bash
+make api   # sets VEC_DEV_AUTH_ENABLED=1
+make web   # sets NEXT_PUBLIC_DEV_AUTH=1
+```
+
+Any address signs straight in. This is **an auth bypass**, and three things
+stand between it and production: it is off by default, the router is not
+mounted when the environment is staging or prod, and `Settings.check()`
+refuses to boot production while it is set.
+
+It exists so the signed-in flow can actually be tested — a magic link
+cannot be clicked by a script, which is precisely why the path that takes
+money would otherwise never run in CI or in a browser here.
+
+### Identity rules worth knowing
+
+- **`sub` is the account.** The Supabase user UUID is our user id; the
+  email is a label that can change, and a change follows the account.
+- **Linking by email requires a verified address.** Otherwise anyone could
+  claim an existing account by signing up with its address through a
+  provider that does not verify email. An unverified collision is refused
+  with a clear message rather than opening a second account.
+- **Anonymous Supabase sessions are rejected** for account actions. Our
+  anonymous path has no account at all, and an anonymous user holding a
+  credit balance would be a second identity model.
+
 ## Browser smoke test
 
 ```bash
-cd apps/web && npm install --no-save playwright
-node e2e/smoke.mjs
+make api    # terminal 1
+make web    # terminal 2
+make e2e    # terminal 3
 ```
 
-It drives the real UI against a real API. It is not decoration: on its first
-run it caught two bugs that unit tests and the type checker could not see
-(see docs/architecture.md).
+Two scripts. `e2e/smoke.mjs` covers the anonymous path — preview, the
+unlock gate, the zoom. `e2e/signed-in.mjs` covers the one that takes money:
+sign in, convert, unlock, download the real file, and confirm a credit was
+actually spent.
+
+They are not decoration. Between them they have caught five bugs that unit
+tests and the type checker could not see, including a preview image
+silently squashed by a Tailwind default and a credit balance that stayed
+stale after a purchase (see docs/architecture.md).
 
 ## Known gaps
 
@@ -167,12 +228,10 @@ run it caught two bugs that unit tests and the type checker could not see
   real worker hardware before treating any of these numbers as the target.
 - **`alpha_binary` scores lower than its siblings** (fidelity ~0.85). The
   alpha matting and the alpha IoU term interact; worth a look.
-- **Web auth is a placeholder.** The API's JWT and API-key paths are real and
-  tested; the web app has not been wired to an identity provider, so unlock,
-  batch and account show their sign-in prompt instead of working.
 - **No checkout page.** Stripe events map to grants and reconcile, and the
   prices are decided, but the Stripe product/price objects and the checkout
-  redirect are not wired, so the pricing buttons are inert.
+  redirect are not wired, so "Buy 50 credits" is inert. Sign-in and unlock
+  work; only the part that takes the money does not.
 - **Rate limiting falls back to per-process memory** when Redis is absent.
   That is not a real limit across replicas, and it is refused in production.
 - **Preview tiles are one tile, not a grid.** Panning re-renders the whole

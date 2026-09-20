@@ -13,10 +13,12 @@ import {
   waitForJob,
 } from "@/lib/api";
 import AdjustPanel from "./AdjustPanel";
+import { useAuth } from "./AuthProvider";
 import DownloadPanel from "./DownloadPanel";
 import ScoreCard from "./ScoreCard";
 import Viewer from "./Viewer";
 import { PrimaryNotice, SecondaryNotices } from "./WarningNotice";
+import SignIn from "./SignIn";
 import { Button, Card, Muted, Notice } from "./ui";
 
 /**
@@ -52,8 +54,9 @@ export default function Converter({
   const [previewsLeft, setPreviewsLeft] = useState<number | null>(null);
   const [turnstile, setTurnstile] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [token] = useState<string | null>(null); // wired to the auth provider in Phase 4
+  const { token, signedIn, credits, refreshCredits } = useAuth();
   const [options, setOptions] = useState<JobOptions>({
     format: defaultFormats,
     detail: "balanced",
@@ -140,14 +143,19 @@ export default function Converter({
   const unlock = useCallback(async () => {
     if (!job) return;
     if (!token) {
-      setMessage(
-        "Sign in to download. Your preview is kept, so you'll come straight back to this result.",
-      );
+      // The preview survives sign-in: the job is already on the server and
+      // becomes theirs at unlock, so they come straight back to this result
+      // rather than re-uploading.
+      setNeedsSignIn(true);
       return;
     }
     setBusy(true);
+    setNeedsSignIn(false);
     try {
       setJob(await unlockJob(job.id, token));
+      // The header shows this number too; leaving it stale after a purchase
+      // reads as "my credit was not taken".
+      await refreshCredits();
     } catch (error) {
       if (error instanceof ApiError && error.problem.error_code === "insufficient_credits") {
         setMessage("You're out of downloads. A $9 credit pack adds 50 that never expire.");
@@ -157,7 +165,7 @@ export default function Converter({
     } finally {
       setBusy(false);
     }
-  }, [job, token]);
+  }, [job, token, refreshCredits]);
 
   const processing =
     phase === "uploading"
@@ -242,6 +250,9 @@ export default function Converter({
 
           {job?.status === "complete" && (
             <>
+              {needsSignIn && !signedIn && (
+                <SignIn reason="Sign in to download" compact />
+              )}
               <PrimaryNotice
                 job={job}
                 onAction={(code) => {
@@ -261,7 +272,7 @@ export default function Converter({
                 options={options}
                 onChange={(next) => void applyOptions(next, false)}
                 onUnlock={() => void unlock()}
-                credits={null}
+                credits={credits}
                 busy={busy}
               />
               <AdjustPanel

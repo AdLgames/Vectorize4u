@@ -1,9 +1,18 @@
-"""Authentication: API keys and the auth provider's JWT.
+"""Authentication: API keys and Supabase session JWTs.
 
 Two callers, one identity type. API keys are `v4u_live_...`; we store the
-SHA-256 hash and show the plaintext exactly once (§6). JWTs are verified
-against the provider's JWKS — we do not hand-roll auth, and we do not trust
-an unverified `sub`.
+SHA-256 hash and show the plaintext exactly once (§6).
+
+Session tokens come from Supabase Auth. We verify them ourselves rather
+than calling Supabase on every request — a network round trip per API call
+would put someone else's uptime inside our p95 — but verification is real:
+signature, issuer, audience and expiry, against the project's published
+keys. An unverified `sub` is never trusted, because `sub` is the account.
+
+Supabase signs one of two ways depending on the project, and both are
+supported so a project can migrate without redeploying this service:
+asymmetric keys published at the JWKS endpoint, or the legacy shared HS256
+secret.
 """
 
 from __future__ import annotations
@@ -11,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import jwt
@@ -54,24 +64,78 @@ def hash_key(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+@lru_cache(maxsize=4)
+def _jwks_client(url: str) -> jwt.PyJWKClient:
+    """Cached: PyJWKClient caches keys, and a new client per request would
+    fetch the key set on every call."""
+    return jwt.PyJWKClient(url, cache_keys=True, lifespan=600)
+
+
+# Fixed per branch. Never read the algorithm from the token's own header to
+# decide *how* to verify — that is how "alg: none" and HS256/RS256
+# confusion attacks work. The header only selects which configured key is
+# the right one to try, and each branch then pins its own algorithm list.
+ASYMMETRIC_ALGORITHMS = ("RS256", "ES256")
+SYMMETRIC_ALGORITHMS = ("HS256",)
+
+
 def _verify_jwt(token: str) -> dict[str, Any]:
     cfg = settings()
-    if cfg.jwt_jwks_url:
-        client = jwt.PyJWKClient(cfg.jwt_jwks_url)
-        signing_key = client.get_signing_key_from_jwt(token)
+
+    try:
+        header_alg = str(jwt.get_unverified_header(token).get("alg", ""))
+    except jwt.PyJWTError as exc:
+        raise errors.unauthorized(f"malformed token: {exc}") from exc
+
+    audience = cfg.jwt_audience or None
+    issuer = cfg.expected_issuer or None
+    # Supabase always sets these; a token without them is not one of ours
+    # and should not be accepted just because the signature checks out.
+    required: Any = {"require": ["exp", "sub"]}
+
+    if header_alg in ASYMMETRIC_ALGORITHMS and cfg.jwks_url:
+        signing_key = _jwks_client(cfg.jwks_url).get_signing_key_from_jwt(token)
         claims: dict[str, Any] = jwt.decode(
             token,
             signing_key.key,
-            algorithms=["RS256", "ES256"],
-            audience=cfg.jwt_audience or None,
-            issuer=cfg.jwt_issuer or None,
+            algorithms=list(ASYMMETRIC_ALGORITHMS),
+            audience=audience,
+            issuer=issuer,
+            options=required,
         )
         return claims
+
+    if header_alg in SYMMETRIC_ALGORITHMS and cfg.supabase_jwt_secret:
+        # Legacy Supabase projects sign with the project's shared secret.
+        # Once a project has migrated to asymmetric keys, *remove* the
+        # secret: leaving it configured keeps a second way to mint tokens
+        # alive long after anyone remembers it exists.
+        return dict(
+            jwt.decode(
+                token,
+                cfg.supabase_jwt_secret,
+                algorithms=list(SYMMETRIC_ALGORITHMS),
+                audience=audience,
+                issuer=issuer,
+                options=required,
+            )
+        )
+
     if cfg.is_production:  # pragma: no cover - blocked by Settings.check()
-        raise errors.unauthorized("no JWKS configured")
-    # Dev/test only: a symmetric secret so the web app can be exercised
-    # without standing up an identity provider.
-    return dict(jwt.decode(token, cfg.jwt_dev_secret, algorithms=["HS256"]))
+        raise errors.unauthorized("no Supabase verification key for this token")
+
+    # Development only: a symmetric secret so the whole signed-in flow can
+    # be exercised without standing up a Supabase project. Tokens minted
+    # here carry no issuer, so that check is dropped with it.
+    return dict(
+        jwt.decode(
+            token,
+            cfg.jwt_dev_secret,
+            algorithms=list(SYMMETRIC_ALGORITHMS),
+            audience=audience,
+            options={"verify_iss": False, "require": ["exp", "sub"]},
+        )
+    )
 
 
 def _principal_from_bearer(token: str, session: Session) -> Principal:
@@ -94,21 +158,63 @@ def _principal_from_bearer(token: str, session: Session) -> Principal:
     except Exception as exc:
         raise errors.unauthorized(f"invalid token: {exc}") from exc
 
-    email = claims.get("email")
     subject = claims.get("sub")
     if not subject:
         raise errors.unauthorized("token has no subject")
 
+    # Supabase can mint anonymous sessions. Our anonymous path is genuinely
+    # anonymous — no account, no credits — so an anonymous Supabase user
+    # holding a credit balance would be a second, confusing identity model.
+    if claims.get("is_anonymous"):
+        raise errors.unauthorized("anonymous sessions cannot be used for account actions")
+
+    email = claims.get("email")
     user = session.execute(select(User).where(User.id == subject)).scalar_one_or_none()
+
     if user is None and email:
-        user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        incumbent = session.execute(
+            select(User).where(User.email == email)
+        ).scalar_one_or_none()
+        if incumbent is not None:
+            if not _email_is_verified(claims):
+                # Linking by email is only safe when the provider says the
+                # address was actually proven. Refuse rather than quietly
+                # opening a second account on the same address: that would
+                # collide on `users.email` anyway, and a 500 is a worse
+                # answer than a clear one.
+                raise errors.unauthorized(
+                    "that address already has an account — sign in with a verified method"
+                )
+            user = incumbent
+
     if user is None:
         # First sight of a valid identity: create the account. The identity
-        # provider is the source of truth for who this is.
+        # provider is the source of truth for who this is, and `sub` is the
+        # account key — the email is a label that can change.
         user = User(id=str(subject), email=email or f"{subject}@users.noreply")
         session.add(user)
         session.flush()
+    elif email and user.email != email:
+        # Supabase allows an address change; follow it rather than leaving
+        # receipts going to the old one.
+        user.email = email
+
     return Principal(user=user)
+
+
+def _email_is_verified(claims: dict[str, Any]) -> bool:
+    """Supabase reports this in `user_metadata`, and older tokens omit it."""
+    if claims.get("email_verified") is True:
+        return True
+    metadata = claims.get("user_metadata")
+    if isinstance(metadata, dict) and metadata.get("email_verified") is True:
+        return True
+    # A magic-link session is proof of the address by construction.
+    return claims.get("amr") is not None and any(
+        entry.get("method") in ("otp", "magiclink", "email")
+        for entry in claims.get("amr", [])
+        if isinstance(entry, dict)
+    )
 
 
 def optional_principal(

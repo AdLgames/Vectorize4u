@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app import errors
 from app.config import settings
-from app.routers import account, batch, files, jobs, stripe_webhooks, uploads
+from app.routers import account, batch, dev_auth, files, jobs, stripe_webhooks, uploads
 
 log = logging.getLogger("vectorize.api")
 
@@ -61,6 +61,14 @@ app.include_router(batch.router)
 app.include_router(account.router)
 app.include_router(stripe_webhooks.router)
 app.include_router(files.router)
+
+if not settings().is_production and settings().dev_auth_enabled:
+    # Mounted only outside production, and only when explicitly switched on.
+    # Settings.check() additionally refuses to boot production with it set.
+    log.warning(
+        "development sign-in is enabled at POST /v1/dev/session — this is an auth bypass"
+    )
+    app.include_router(dev_auth.router)
 
 
 @app.exception_handler(HTTPException)

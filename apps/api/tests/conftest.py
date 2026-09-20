@@ -91,17 +91,38 @@ def user(session):
     return record
 
 
-@pytest.fixture()
-def auth(user):
-    """A bearer token for `user`, signed with the dev secret."""
+def session_token(user_id: str, email: str) -> str:
+    """A token shaped the way Supabase issues them.
+
+    `exp`, `aud` and a verified email are all required by the verifier, so a
+    fixture that omits them would be testing a token the service will never
+    see.
+    """
     import jwt
 
     from app.config import settings
+    from app.models import utcnow
 
-    token = jwt.encode(
-        {"sub": user.id, "email": user.email}, settings().jwt_dev_secret, algorithm="HS256"
+    now = int(utcnow().timestamp())
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "email": email,
+            "aud": settings().jwt_audience or "authenticated",
+            "role": "authenticated",
+            "iat": now,
+            "exp": now + 3600,
+            "user_metadata": {"email_verified": True},
+        },
+        settings().jwt_dev_secret,
+        algorithm="HS256",
     )
-    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def auth(user):
+    """A bearer token for `user`."""
+    return {"Authorization": f"Bearer {session_token(user.id, user.email)}"}
 
 
 @pytest.fixture()

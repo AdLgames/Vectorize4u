@@ -26,7 +26,13 @@ make setup setup-service     # Python side
 cd apps/web && npm install   # web side
 make api                     # terminal 1 — API with the worker inline
 make web                     # terminal 2 — Next.js
+make e2e                     # terminal 3 — drive it in a real browser
 ```
+
+Sign-in is Supabase magic link. With no Supabase project configured those
+two targets fall back to a local development sign-in, so a fresh clone is a
+working app rather than a sign-in wall — see `docs/runbook.md` for the real
+setup and for why that fallback cannot reach production.
 
 The engine on its own:
 
@@ -59,6 +65,7 @@ tune and debug it.
 | Failed jobs are never billed | `worker/tasks.py: _fail` | `test_failed_job_is_never_billed` |
 | `{url}` cannot reach internal services | `app/fetcher.py` | 25 cases in `test_fetcher.py` |
 | Deleted jobs are unreachable immediately | `app/retention.py` | `test_delete_purges_immediately` |
+| A session cannot be forged, replayed or downgraded | `app/auth.py` | 17 cases in `test_auth_supabase.py` |
 | LCP < 2.0s, CLS < 0.05, Lighthouse ≥ 95 | `lighthouserc.json` | measured: 99/100/96/100, LCP 1.9s, CLS 0 |
 
 ## What is not built
@@ -66,15 +73,14 @@ tune and debug it.
 Phases 5–8 beyond batch: the public API product (keys exist; docs and
 overage caps do not), SEO expansion, and the Phase 8 refinement loop.
 
-Two things inside the built phases are deliberately stubbed, and the app
-shows a sign-in prompt rather than pretending otherwise:
+One thing inside the built phases is deliberately stubbed:
 
-- **Web auth.** The API's JWT and API-key verification are real and tested;
-  the web app has not been wired to an identity provider.
-- **Checkout.** Stripe events map to grants and reconcile with zero drift,
-  but there is no checkout page. §10's pricing decision is resolved (Free /
-  $9 credit pack / $12 Starter / $29 Pro — see docs/architecture.md); the
-  Stripe products and the checkout redirect are not wired.
+- **Checkout.** Sign-in and unlock work end to end — Supabase magic link,
+  a credit spent, real files delivered. Stripe events map to grants and
+  reconcile with zero drift. What is missing is the Stripe price objects
+  and the redirect, so "Buy 50 credits" is inert. §10's pricing decision is
+  resolved (Free / $9 credit pack / $12 Starter / $29 Pro — see
+  docs/architecture.md).
 
 ## The evidence, not the metric
 

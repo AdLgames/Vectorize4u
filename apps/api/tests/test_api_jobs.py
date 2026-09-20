@@ -249,22 +249,15 @@ def test_upload_rejects_non_image_content_type(client, auth):
 
 
 def test_another_users_job_is_not_found(client, auth, funded, logo_png, session):
-    import jwt
-
-    from app.config import settings
     from app.models import User
+    from tests.conftest import session_token
 
     body = upload_and_vectorize(client, auth, logo_png).json()
 
     session.add(User(id="usr_other", email="other@example.com"))
     session.commit()
     other = {
-        "Authorization": "Bearer "
-        + jwt.encode(
-            {"sub": "usr_other", "email": "other@example.com"},
-            settings().jwt_dev_secret,
-            algorithm="HS256",
-        )
+        "Authorization": f"Bearer {session_token('usr_other', 'other@example.com')}"
     }
     assert client.get(f"/v1/jobs/{body['id']}", headers=other).status_code == 404
 

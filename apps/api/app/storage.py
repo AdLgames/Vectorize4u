@@ -94,11 +94,14 @@ class LocalStorage(Storage):
     them exercises the same verification path as production does.
     """
 
-    def __init__(self, root: str | Path, secret: str, base_url: str = "/v1/files") -> None:
+    def __init__(self, root: str | Path, secret: str, base_url: str | None = None) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.secret = secret.encode()
-        self.base_url = base_url
+        # Absolute by default: in development the API and the web app are on
+        # different ports, and a relative URL would resolve against the web
+        # app's origin and 404.
+        self.base_url = base_url or f"{settings().public_api_url.rstrip('/')}/v1/files"
 
     def _path(self, key: str) -> Path:
         # Defence in depth: a key is server-generated, but a traversal here

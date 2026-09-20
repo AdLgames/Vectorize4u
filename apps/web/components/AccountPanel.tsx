@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { type Account, ApiError, getAccount } from "@/lib/api";
+import { useAuth } from "./AuthProvider";
+import SignIn from "./SignIn";
 import { Button, Card, Meter, Muted } from "./ui";
 
 /**
@@ -24,7 +26,7 @@ const SOURCE_LABEL: Record<string, string> = {
 export default function AccountPanel() {
   const [account, setAccount] = useState<Account | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [token] = useState<string | null>(null); // wired to the auth provider in Phase 4
+  const { token, email: signedInAs, signOut } = useAuth();
 
   useEffect(() => {
     if (!token) return;
@@ -34,13 +36,7 @@ export default function AccountPanel() {
   }, [token]);
 
   if (!token) {
-    return (
-      <Card>
-        <p style={{ margin: 0, color: "var(--ink-500)" }}>
-          Sign in to see your downloads, when your credits expire, and your conversion history.
-        </p>
-      </Card>
-    );
+    return <SignIn reason="Sign in to see your account" />;
   }
   if (error) {
     return (
@@ -120,7 +116,9 @@ export default function AccountPanel() {
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: "var(--space-3)", flexWrap: "wrap" }}>
             <Button size="sm">Buy 50 credits</Button>
-            <Button size="sm">Manage plan</Button>
+            <Button size="sm" onClick={() => void signOut()}>
+              Sign out{signedInAs ? ` (${signedInAs})` : ""}
+            </Button>
           </div>
         </Card>
       </div>
