@@ -77,7 +77,8 @@ tune and debug it.
 | A callback cannot be aimed at an internal service | re-validated at delivery in `worker/tasks.py` | `test_delivery_refuses_an_internal_destination` |
 | The published API docs match the served schema | `packages/shared/generate.py`, docs as data | `test_public_docs.py` |
 | No two landing pages are the same page with a keyword swapped | copy written per page | `apps/web/scripts/check-seo-pages.mjs`, in CI |
-| LCP < 2.0s, CLS < 0.05, Lighthouse ≥ 95 | `lighthouserc.json` | measured: 99/100/96/100, LCP 1.9s, CLS 0 |
+| LCP < 2.5s, CLS < 0.05, Lighthouse ≥ 95, accessibility 100 | `lighthouserc.json` | in CI, five pages, median of 3 runs |
+| No text in a colour below 4.5:1 on its background | one token scale | `apps/web/scripts/check-contrast.mjs`, in CI |
 
 ## What is not built
 

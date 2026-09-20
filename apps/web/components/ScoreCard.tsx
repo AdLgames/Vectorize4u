@@ -55,7 +55,7 @@ export default function ScoreCard({ job }: { job: Job }) {
         size="sm"
         onClick={() => setOpen(!open)}
         ariaExpanded={open}
-        style={{ paddingLeft: 0, marginTop: 6, color: "var(--cyan)" }}
+        style={{ paddingLeft: 0, marginTop: 6, color: "var(--cyan-strong)" }}
       >
         {open ? "Hide the detail" : "What's behind this number?"}
       </Button>

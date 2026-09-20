@@ -239,7 +239,7 @@ export default function Converter({
               padding: "8px 12px",
               borderTop: "1px solid var(--ink-100)",
               fontSize: "var(--text-xs)",
-              color: "var(--ink-400)",
+              color: "var(--ink-500)",
             }}
           >
             <span>Drag the handle · scroll or pinch to zoom · drag the image to pan</span>

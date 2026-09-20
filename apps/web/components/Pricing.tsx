@@ -110,7 +110,7 @@ export default function Pricing() {
                 <div
                   style={{
                     fontSize: "var(--text-xs)",
-                    color: plan.highlight ? "var(--cyan)" : "var(--ink-400)",
+                    color: plan.highlight ? "var(--cyan-strong)" : "var(--ink-500)",
                   }}
                 >
                   {plan.note}
@@ -119,7 +119,7 @@ export default function Pricing() {
             </div>
             <div style={{ fontSize: "var(--text-h2)", fontWeight: 600, color: "var(--ink-900)" }}>
               {plan.price}
-              <span style={{ fontSize: "var(--text-sm)", color: "var(--ink-400)", fontWeight: 400 }}>
+              <span style={{ fontSize: "var(--text-sm)", color: "var(--ink-500)", fontWeight: 400 }}>
                 {plan.per}
               </span>
             </div>

@@ -59,7 +59,7 @@ export default function Home() {
           gap: 20,
           flexWrap: "wrap",
           fontSize: "var(--text-xs)",
-          color: "var(--ink-400)",
+          color: "var(--ink-500)",
           borderTop: "1px solid var(--ink-100)",
           borderBottom: "1px solid var(--ink-100)",
           padding: "var(--space-4) 0",
@@ -80,7 +80,9 @@ export default function Home() {
 function Audience({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 style={{ fontSize: "var(--text-h3)", margin: "0 0 6px" }}>{title}</h3>
+      {/* h2, not h3: the visual size is a style choice, the level is a
+          promise to a screen reader that there is an h2 above it. */}
+      <h2 style={{ fontSize: "var(--text-h3)", margin: "0 0 6px" }}>{title}</h2>
       <p style={{ color: "var(--ink-500)", margin: 0 }}>{children}</p>
     </div>
   );

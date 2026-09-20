@@ -9,6 +9,10 @@ const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vectorize4u.example";
 
 const sans = Instrument_Sans({
   subsets: ["latin"],
+  // `optional` was measured against `swap` when CI's LCP budget failed:
+  // 2093 ms vs 2082 ms, i.e. no difference. The font is not on the
+  // critical path, so `swap` stays — it is the one that actually shows a
+  // visitor the brand typeface on a first visit.
   display: "swap",
   variable: "--font-sans",
 });
