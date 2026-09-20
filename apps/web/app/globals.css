@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/* Dark mode is a must-have (§7), and so is no layout shift on upload: the
+   drop zone and the result panel reserve the same box. */
+@theme {
+  --color-ink: #0f172a;
+  --color-ink-soft: #475569;
+  --color-accent: #2563eb;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0b1120;
+    color: #e2e8f0;
+  }
+}
+
+/* Visible focus everywhere: the whole app must be keyboard accessible (§7). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

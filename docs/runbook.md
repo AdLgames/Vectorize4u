@@ -101,6 +101,48 @@ free binary does not, and stopping is the correct outcome.
 Do not substitute `make bench` for this. Best-of-N selected by a score always
 beats a single call *on that score*.
 
+## Running the whole stack locally
+
+No Postgres, no Redis, no cloud account:
+
+```bash
+make setup setup-service
+make api      # terminal 1 — FastAPI with the worker running inline
+make web      # terminal 2 — Next.js against http://127.0.0.1:8000
+```
+
+With real infrastructure, drop `VEC_INLINE_WORKER` and run `make worker`
+alongside. The worker consumes all three lanes in that command; in
+production run **three separate pools**, one per queue, so a 500-file batch
+cannot starve an interactive preview (§4.2).
+
+Service environment variables (all prefixed `VEC_`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VEC_ENVIRONMENT` | `dev` | `prod`/`staging` turn on the startup safety checks |
+| `VEC_DATABASE_URL` | SQLite file | Postgres in production |
+| `VEC_REDIS_URL` | local Redis | Celery broker and rate-limit store |
+| `VEC_STORAGE_BACKEND` | `local` | `r2` in production; `local` is refused there |
+| `VEC_INLINE_WORKER` | unset | `1` runs jobs in the request thread; refused in production |
+| `VEC_IP_HASH_SECRET` | dev default | **Rotate daily.** A plain hash of an IPv4 is brute-forced in seconds |
+| `VEC_STRIPE_WEBHOOK_SECRET` | empty | Required in production; without it signatures are not verified |
+
+`Settings.check()` runs at startup and refuses to boot a production process
+that still holds a development default for any of the secrets, or that is
+pointed at the local storage backend.
+
+## Browser smoke test
+
+```bash
+cd apps/web && npm install --no-save playwright
+node e2e/smoke.mjs
+```
+
+It drives the real UI against a real API. It is not decoration: on its first
+run it caught two bugs that unit tests and the type checker could not see
+(see docs/architecture.md).
+
 ## Known gaps
 
 - **The corpus is synthetic.** §3.9 wants 60–100 hand-labelled real images.
@@ -116,5 +158,14 @@ beats a single call *on that score*.
   photograph traces to ~87,000 nodes, and the node penalty in the score
   already says what needs saying about that. Re-measure the §2 budget on
   real worker hardware before treating any of these numbers as the target.
-- **`alpha_binary` scores lower than its siblings** (fidelity ~0.85). Worth
-  a look before Phase 2: the alpha matting and the alpha IoU term interact.
+- **`alpha_binary` scores lower than its siblings** (fidelity ~0.85). The
+  alpha matting and the alpha IoU term interact; worth a look.
+- **Web auth is a placeholder.** The API's JWT and API-key paths are real and
+  tested; the web app has not been wired to an identity provider, so unlock,
+  batch and account show their sign-in prompt instead of working.
+- **No checkout page.** Stripe events map to grants and reconcile, but
+  §10's pricing decision is still open and the page depends on the answer.
+- **Rate limiting falls back to per-process memory** when Redis is absent.
+  That is not a real limit across replicas, and it is refused in production.
+- **Preview tiles are one tile, not a grid.** Panning re-renders the whole
+  visible area. Fine at launch sizes; a tile grid is a Phase 8 optimisation.

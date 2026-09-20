@@ -85,7 +85,17 @@ _dispatcher: Dispatcher | None = None
 def dispatcher() -> Dispatcher:
     global _dispatcher
     if _dispatcher is None:
-        _dispatcher = Dispatcher()
+        # VEC_INLINE_WORKER=1 runs jobs in the request thread. For local
+        # development only: the entire point of the worker is that long jobs
+        # do not block HTTP, so this is refused in production.
+        import os
+
+        if os.environ.get("VEC_INLINE_WORKER") == "1":
+            if settings().is_production:
+                raise RuntimeError("VEC_INLINE_WORKER is refused in production")
+            _dispatcher = InlineDispatcher()
+        else:
+            _dispatcher = Dispatcher()
     return _dispatcher
 
 

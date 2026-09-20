@@ -1,0 +1,65 @@
+/**
+ * JSON-LD for the SEO pages (§9).
+ *
+ * `SoftwareApplication` + `FAQPage` are what actually earn rich results for
+ * converter queries; they ship with the landing pages, not later.
+ */
+
+export function SoftwareApplicationLd({ name, description }: { name: string; description: string }) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name,
+    description,
+    applicationCategory: "DesignApplication",
+    operatingSystem: "Web",
+    offers: [
+      { "@type": "Offer", price: "0", priceCurrency: "USD", name: "Free previews" },
+      { "@type": "Offer", price: "9", priceCurrency: "USD", name: "50-download credit pack" },
+      { "@type": "Offer", price: "12", priceCurrency: "USD", name: "Starter, per month" },
+    ],
+  };
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
+  );
+}
+
+export function FaqLd({ items }: { items: { question: string; answer: string }[] }) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: { "@type": "Answer", text: item.answer },
+    })),
+  };
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
+  );
+}
+
+export function Faq({ items }: { items: { question: string; answer: string }[] }) {
+  return (
+    <section aria-labelledby="faq-heading" className="space-y-4">
+      <h2 id="faq-heading" className="text-xl font-semibold">
+        Questions
+      </h2>
+      <dl className="space-y-4">
+        {items.map((item) => (
+          <div key={item.question}>
+            <dt className="font-medium">{item.question}</dt>
+            <dd className="text-slate-600 dark:text-slate-300">{item.answer}</dd>
+          </div>
+        ))}
+      </dl>
+      <FaqLd items={items} />
+    </section>
+  );
+}

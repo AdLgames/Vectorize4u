@@ -14,3 +14,7 @@ out/
 benchmarks/out/
 benchmarks/ab/out/
 /tmp_scratch/
+*.tsbuildinfo
+.storage/
+dev.db
+ci.db
