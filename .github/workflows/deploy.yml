@@ -181,6 +181,11 @@ jobs:
             echo "$name generated and set on every app"
           done
 
+      - name: Point the configs at this run's region
+        run: |
+          sed -i 's/^primary_region = .*/primary_region = "${{ inputs.region }}"/' infra/*.toml
+          grep -H primary_region infra/*.toml
+
       - name: Redis
         run: |
           set -u
@@ -188,7 +193,7 @@ jobs:
             flyctl volumes create redis_data --size 1 --region "${{ inputs.region }}" \
               -a "$REDIS_APP" --yes
           flyctl deploy -c infra/fly.redis.toml --image redis:7-alpine \
-            -a "$REDIS_APP" --region "${{ inputs.region }}" --yes .
+            -a "$REDIS_APP" --yes .
 
   secrets:
     # `everything` runs bootstrap first. The other stages skip it, and a
@@ -264,10 +269,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Point the configs at this run's region
+        run: |
+          sed -i 's/^primary_region = .*/primary_region = "${{ inputs.region }}"/' infra/*.toml
+          grep -H primary_region infra/*.toml
+
       - name: API (runs alembic upgrade head as its release command)
         run: |
           flyctl deploy --config infra/fly.api.toml --dockerfile Dockerfile \
-            -a "$API_APP" --region "${{ inputs.region }}" --yes .
+            -a "$API_APP" --yes .
 
       - name: Three worker lanes (§4.2)
         run: |
@@ -275,7 +285,7 @@ jobs:
           for lane in preview sync batch; do
             flyctl deploy --config "infra/fly.worker-$lane.toml" \
               --dockerfile infra/Dockerfile.worker \
-              -a "${{ inputs.prefix }}-worker-$lane" --region "${{ inputs.region }}" --yes .
+              -a "${{ inputs.prefix }}-worker-$lane" --yes .
           done
 
       - name: Smoke test
