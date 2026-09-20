@@ -32,14 +32,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.catalog import Product, purchasable  # noqa: E402
+from app.config import settings  # noqa: E402
 
 TAG = "vectorize_plan"
 
 
 def client():  # type: ignore[no-untyped-def]
-    key = os.environ.get("VEC_STRIPE_SECRET_KEY", "")
+    # Via settings, not os.environ, so `apps/api/.env` works here exactly
+    # as it does for the service — otherwise the key has to be exported
+    # separately and the two disagree about which account you are on.
+    key = settings().stripe_secret_key or os.environ.get("VEC_STRIPE_SECRET_KEY", "")
     if not key:
-        print("VEC_STRIPE_SECRET_KEY is not set", file=sys.stderr)
+        print(
+            "VEC_STRIPE_SECRET_KEY is not set.\n"
+            "Put it in apps/api/.env or export it, then run this again.",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     import stripe
 
@@ -65,6 +73,30 @@ def find_price(stripe, product_id: str, item: Product):  # type: ignore[no-untyp
 
 
 def main() -> int:
+    try:
+        return _run()
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 - this is a CLI, not a library
+        name = type(exc).__name__
+        if "Auth" in name or "Permission" in name:
+            print(
+                f"\nStripe rejected the key ({name}). Check you copied the whole "
+                "secret key, and that it is the one for the account you meant.",
+                file=sys.stderr,
+            )
+        elif "Connection" in name:
+            print(
+                f"\nCould not reach Stripe ({name}). Check your network or proxy "
+                "and run it again — nothing was created.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"\n{name}: {exc}", file=sys.stderr)
+        return 1
+
+
+def _run() -> int:
     stripe, is_live = client()
     mode = "LIVE" if is_live else "test"
     print(f"Stripe {mode} mode\n")

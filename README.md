@@ -21,9 +21,14 @@ engine on three separate queue lanes.
 with a zoomable preview slider, batch grid, and the two SEO landing pages
 §9 requires at this phase.
 
+**[docs/getting-started.md](docs/getting-started.md) walks through it from
+a clone to a test card turning into credits** — about 20 minutes, no money.
+The short version:
+
 ```bash
 make setup setup-service     # Python side
 cd apps/web && npm install   # web side
+cargo install vtracer resvg  # the tracers; plus potrace from your package manager
 make api                     # terminal 1 — API with the worker inline
 make web                     # terminal 2 — Next.js
 make e2e                     # terminal 3 — drive it in a real browser

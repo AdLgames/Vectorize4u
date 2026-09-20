@@ -48,11 +48,15 @@ typecheck: ## mypy --strict on the engine, the API and the worker
 
 check: lint typecheck test test-api ## everything CI runs except bench
 
+# The environment goes on the command that needs it, AFTER the cd:
+# `VAR=x cd dir && cmd` scopes VAR to `cd` and cmd never sees it, which
+# silently started the API with the worker disabled and dev sign-in off.
 api: ## run the API locally with the worker inline (no Redis, no Postgres)
-	VEC_ENVIRONMENT=dev VEC_INLINE_WORKER=1 VEC_DEV_AUTH_ENABLED=1 \
-	VEC_DATABASE_URL="sqlite+pysqlite:///./dev.db" \
-	VEC_STORAGE_BACKEND=local VEC_STORAGE_LOCAL_DIR=./.storage \
-	cd apps/api && ../../$(PY) -m uvicorn app.main:app --reload --port 8000
+	cd apps/api && \
+	  VEC_ENVIRONMENT=dev VEC_INLINE_WORKER=1 VEC_DEV_AUTH_ENABLED=1 \
+	  VEC_DATABASE_URL="sqlite+pysqlite:///./dev.db" \
+	  VEC_STORAGE_BACKEND=local VEC_STORAGE_LOCAL_DIR=./.storage \
+	  ../../$(PY) -m uvicorn app.main:app --reload --port 8000
 
 worker: ## run a real Celery worker against all three lanes
 	cd apps/worker && ../../$(PY) -m celery -A worker.celery_app:celery_app worker \
