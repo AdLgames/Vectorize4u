@@ -42,7 +42,17 @@ QUEUES = (
     Queue(QUEUE_BATCH, routing_key=QUEUE_BATCH),
 )
 
-celery_app = Celery("vectorize-worker", broker=settings().redis_url, backend=None)
+celery_app = Celery(
+    "vectorize-worker",
+    broker=settings().redis_url,
+    backend=None,
+    # Without this the worker starts, connects, subscribes to its queues,
+    # reports itself healthy — and then raises KeyError on the first task,
+    # because nothing ever imported the module the tasks are defined in.
+    # Every test in this repository dispatches inline, which imports
+    # `worker.tasks` directly and hides it completely.
+    include=["worker.tasks"],
+)
 
 celery_app.conf.update(
     task_queues=QUEUES,
@@ -53,7 +63,13 @@ celery_app.conf.update(
         "worker.tasks.sweep_expired": {"queue": QUEUE_BATCH},
         "worker.tasks.deliver_webhook": {"queue": QUEUE_BATCH},
     },
-    worker_max_tasks_per_child=25,
+    # Recycling a child costs the *next* task its interpreter warm-up:
+    # measured at 1.07 s against a 0.44 s baseline, and visible to whoever
+    # is waiting for that preview. 25 is right for the batch lane, where
+    # OpenCV/NumPy fragmentation is the real risk and nobody is watching a
+    # spinner. The preview lane sets this higher — see
+    # infra/fly.worker-preview.toml.
+    worker_max_tasks_per_child=int(os.environ.get("VEC_MAX_TASKS_PER_CHILD", "25")),
     worker_prefetch_multiplier=1,
     task_acks_late=True,
     task_reject_on_worker_lost=True,

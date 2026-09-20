@@ -16,6 +16,10 @@ primary_region = "lhr"
   VEC_STORAGE_BACKEND = "r2"
   QUEUES = "queue_preview"
   CONCURRENCY = "4"
+  # Every 25th preview would otherwise pay for a child recycle — measured
+  # at 1.07 s against a 0.44 s baseline. These jobs are small and short, so
+  # the fragmentation that 25 exists to bound does not build up here.
+  VEC_MAX_TASKS_PER_CHILD = "200"
 
 # No [http_service]: workers take work from Redis, not from the internet.
 [[vm]]

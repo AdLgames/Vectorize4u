@@ -386,6 +386,47 @@ So: viable, cheap to prototype, and deliberately not wired into the
 pipeline. It would earn its place alongside a plotter/engraver corpus to
 test against, which we do not have.
 
+## Load verification, and the bug it found
+
+§13 asks for two things no unit test can answer, because they are claims
+about a broker and three pools under contention: a 500-file batch must run
+to completion without raising p95 on `queue_preview`, and worker RSS must
+stay flat across a long run. `benchmarks/load/` runs the real stack —
+Redis, Postgres, uvicorn, two Celery pools on separate queues and separate
+cores — and both now pass:
+
+| | idle | under a 500-file batch |
+|---|---|---|
+| preview p50 | 0.436 s | 0.441 s |
+| preview p95 | 0.439 s | 0.449 s |
+| `/health` p95 (control) | 0.002 s | 0.003 s |
+
+500 files, 0 failed, 133 s (3.8/s). Soak: 1,500 jobs, preview RSS flat at
+252 MB, batch RSS p90 428 → 449 MB with a 645 MB peak.
+
+**The first run never got that far.** The worker connected, subscribed to
+its queues, reported itself healthy, and then raised `KeyError:
+worker.tasks.vectorize_job` on the first task — `worker.tasks` was never
+imported, so nothing was registered. Every test in this repository
+dispatches inline, which imports that module directly and hides the
+problem completely. In production this is a worker that looks up and
+processes nothing.
+
+The second run found a second one: a 404 for an upload that was sitting in
+the database. `get_session` commits in its teardown, which FastAPI runs
+*after* the response has gone to the transport, so a client that
+immediately uses the `upload_id` it was just handed can beat its own row
+into the database. Endpoints that hand out an identifier now commit before
+they answer, and `tests/test_commit_boundaries.py` removes the safety net
+that hid it — it injects a session that never commits in teardown, so
+anything relying on teardown fails.
+
+Two measurement traps are written up in `benchmarks/load/README.md`, both
+of which this test fell into first and both of which would have been
+reported as "batch work is starving previews": comparing a 10-preview idle
+phase against a 230-preview loaded one when a child recycles every 25
+tasks, and sampling a prefork sawtooth once per chunk.
+
 ## What is unexercised
 
 **Stripe against a real account.** Everything above is tested against a

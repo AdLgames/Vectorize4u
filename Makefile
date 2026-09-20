@@ -8,7 +8,7 @@ ENGINE := packages/engine
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
         bench-baseline ab ab-report kit api worker web web-build web-lint e2e \
         stripe-bootstrap types images deploy-api deploy-workers r2-lifecycle \
-        calibrate refine-report centerline-report clean
+        calibrate refine-report centerline-report load-test soak clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -105,6 +105,12 @@ web-lint: ## eslint + tsc + the doorway-page guard for the web app
 
 bench: ## per-category means + regression gate against benchmarks/baseline.json
 	$(PY) benchmarks/run.py
+
+load-test: ## §13: a 500-file batch must not raise preview p95 (see benchmarks/load/README.md)
+	$(PY) benchmarks/load/load_test.py --files 500
+
+soak: ## §13: worker RSS must stay flat across a long run
+	$(PY) benchmarks/load/soak.py --jobs 1500
 
 calibrate: ## recompute k_class from evidence (dry run; --write to apply)
 	$(PY) benchmarks/calibrate.py

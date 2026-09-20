@@ -107,7 +107,11 @@ def set_overage_cap(
     if not plan_for(user.plan).allows_overage:
         raise errors.conflict("no_overage_on_plan", "this plan has no usage billing")
     user.overage_cap_opt_out = body.opt_out
-    session.flush()
+    # Committed before the response, not in the dependency's teardown — a
+    # caller that reads its account back immediately must see the change
+    # it just made. See routers/uploads.py for what leaving it to teardown
+    # costs.
+    session.commit()
     return account(principal=principal, session=session)
 
 
@@ -141,7 +145,8 @@ def create_key(
     raw, digest, prefix = generate_api_key()
     record = ApiKey(user_id=principal.user_id, key_hash=digest, key_prefix=prefix, label=body.label)
     session.add(record)
-    session.flush()
+    # The caller is about to authenticate with this key.
+    session.commit()
     return ApiKeyResponse(
         id=record.id,
         key_prefix=prefix,
@@ -161,4 +166,6 @@ def revoke_key(
     if record is None or record.user_id != principal.user_id:
         raise errors.not_found("api key")
     record.revoked_at = utcnow()
-    session.flush()
+    # Revocation is a security action: it takes effect when the caller is
+    # told it has, not whenever the request teardown gets around to it.
+    session.commit()
