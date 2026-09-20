@@ -80,11 +80,11 @@ e2e: ## drive the app in a real browser (needs `make api` + `make web`)
 	  && node e2e/intent-pages.mjs && node e2e/tools.mjs
 
 images: ## build both production images locally (the build context is the repo root)
-	docker build -f infra/Dockerfile.api -t vectorize-api .
+	docker build -f Dockerfile -t vectorize-api .
 	docker build -f infra/Dockerfile.worker -t vectorize-worker .
 
 deploy-api: ## fly deploy the API (runs alembic upgrade head as its release command)
-	fly deploy --config infra/fly.api.toml --dockerfile infra/Dockerfile.api .
+	fly deploy --config infra/fly.api.toml --dockerfile Dockerfile .
 
 deploy-workers: ## fly deploy all three worker lanes (§4.2)
 	fly deploy --config infra/fly.worker-preview.toml --dockerfile infra/Dockerfile.worker .

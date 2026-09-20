@@ -1,0 +1,230 @@
+# Deploy from GitHub's web UI, because a phone has no terminal.
+#
+# Everything here is normally `flyctl` on a laptop. Run from Actions →
+# Deploy → "Run workflow" instead, and the only credential that exists is
+# FLY_API_TOKEN in this repository's secrets — it never passes through a
+# chat window or a developer's shell history.
+#
+# The stages are separate on purpose: `bootstrap` creates things and is
+# safe to re-run, `secrets` writes configuration, `deploy` ships code.
+# Running them out of order fails loudly rather than half-deploying.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: What to run
+        required: true
+        type: choice
+        default: bootstrap
+        options:
+          - bootstrap
+          - secrets
+          - deploy
+          - everything
+      region:
+        description: Fly region — all apps and the database must share one
+        required: true
+        type: string
+        default: ams
+      org:
+        description: Fly organisation slug
+        required: true
+        type: string
+        default: chess-930
+      prefix:
+        description: App name prefix (<prefix>-api, <prefix>-worker-preview, …)
+        required: true
+        type: string
+        default: vectorize
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  # Names are derived from one input so a second environment, or a name
+  # somebody already took, is a single field rather than an edit across
+  # five files.
+  API_APP: ${{ inputs.prefix }}-api
+  REDIS_APP: ${{ inputs.prefix }}-redis
+  DB_APP: ${{ inputs.prefix }}-db
+  WORKER_APPS: ${{ inputs.prefix }}-worker-preview ${{ inputs.prefix }}-worker-sync ${{ inputs.prefix }}-worker-batch
+
+jobs:
+  bootstrap:
+    if: inputs.stage == 'bootstrap' || inputs.stage == 'everything'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Create the apps
+        run: |
+          set -u
+          for app in "$API_APP" "$REDIS_APP" $WORKER_APPS; do
+            # Already existing is the expected outcome on a re-run.
+            flyctl apps create "$app" --org "${{ inputs.org }}" 2>&1 | tee /tmp/out || \
+              grep -qi "already" /tmp/out
+          done
+          flyctl apps list
+
+      - name: Postgres
+        run: |
+          set -u
+          if flyctl postgres list 2>/dev/null | grep -q "$DB_APP"; then
+            echo "$DB_APP already exists"
+          else
+            flyctl postgres create \
+              --name "$DB_APP" \
+              --region "${{ inputs.region }}" \
+              --initial-cluster-size 1 \
+              --vm-size shared-cpu-1x \
+              --volume-size 10
+          fi
+          # Attach per app, not once: each gets its own database user, and
+          # each gets DATABASE_URL set on it. The workers write jobs,
+          # credits and usage, so they need it too — and app/config.py
+          # adopts DATABASE_URL and renames the driver, so nobody copies a
+          # connection string by hand.
+          for app in "$API_APP" $WORKER_APPS; do
+            flyctl postgres attach "$DB_APP" -a "$app" --yes 2>&1 | tee /tmp/attach || \
+              grep -qiE "already|exists" /tmp/attach
+          done
+
+      - name: Generate the secrets nobody should have to invent
+        run: |
+          set -u
+          APPS="$API_APP $WORKER_APPS"
+          for name in VEC_IP_HASH_SECRET VEC_WEBHOOK_SIGNING_SECRET VEC_JWT_DEV_SECRET; do
+            missing=""
+            for app in $APPS; do
+              flyctl secrets list -a "$app" 2>/dev/null | grep -q "$name" || missing="yes"
+            done
+            if [ -z "$missing" ]; then
+              echo "$name is already set everywhere"
+              continue
+            fi
+            # One value across every app. VEC_WEBHOOK_SIGNING_SECRET is the
+            # key customers verify our callbacks with, so two apps holding
+            # different values is a silent, intermittent failure.
+            value="$(openssl rand -base64 32)"
+            for app in $APPS; do
+              flyctl secrets set -a "$app" --stage "$name=$value" > /dev/null
+            done
+            echo "$name generated and set on every app"
+          done
+
+      - name: Redis
+        run: |
+          set -u
+          flyctl volumes list -a "$REDIS_APP" | grep -q redis_data || \
+            flyctl volumes create redis_data --size 1 --region "${{ inputs.region }}" \
+              -a "$REDIS_APP" --yes
+          flyctl deploy -c infra/fly.redis.toml --image redis:7-alpine \
+            -a "$REDIS_APP" --region "${{ inputs.region }}" --yes .
+
+  secrets:
+    # `everything` runs bootstrap first. The other stages skip it, and a
+    # skipped dependency must not take this job with it — hence always().
+    needs: [bootstrap]
+    if: >-
+      always()
+      && (inputs.stage == 'secrets' || inputs.stage == 'everything')
+      && (needs.bootstrap.result == 'success' || needs.bootstrap.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Write the shared configuration
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -u
+          for app in "$API_APP" $WORKER_APPS; do
+            flyctl secrets set -a "$app" --stage \
+              VEC_REDIS_URL="redis://${REDIS_APP}.internal:6379/0" \
+              VEC_R2_BUCKET="$R2_BUCKET" \
+              VEC_R2_ENDPOINT_URL="$R2_ENDPOINT_URL" \
+              VEC_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+              VEC_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+              VEC_SUPABASE_URL="$SUPABASE_URL"
+          done
+          flyctl secrets set -a "$API_APP" --stage \
+            VEC_PUBLIC_API_URL="https://${API_APP}.fly.dev"
+
+      - name: Payments, if and only if Stripe is configured
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.VEC_STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.VEC_STRIPE_WEBHOOK_SECRET }}
+          STRIPE_PRICES: ${{ secrets.VEC_STRIPE_PRICES }}
+          CHECKOUT_SUCCESS_URL: ${{ secrets.VEC_CHECKOUT_SUCCESS_URL }}
+          CHECKOUT_CANCEL_URL: ${{ secrets.VEC_CHECKOUT_CANCEL_URL }}
+          BILLING_PORTAL_RETURN_URL: ${{ secrets.VEC_BILLING_PORTAL_RETURN_URL }}
+        run: |
+          set -u
+          # Adding the Stripe secrets to this repository is what turns
+          # payments on. Until then the API runs with them off and
+          # /v1/checkout answers 503 — which is a working site that cannot
+          # sell yet, rather than a site that will not boot.
+          if [ -z "${STRIPE_SECRET_KEY}" ] || [ -z "${STRIPE_PRICES}" ]; then
+            echo "no Stripe configuration — payments stay off"
+            flyctl secrets set -a "$API_APP" --stage VEC_PAYMENTS_ENABLED="0"
+            exit 0
+          fi
+          flyctl secrets set -a "$API_APP" --stage \
+            VEC_PAYMENTS_ENABLED="1" \
+            VEC_STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
+            VEC_STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
+            VEC_STRIPE_PRICES="$STRIPE_PRICES" \
+            VEC_CHECKOUT_SUCCESS_URL="$CHECKOUT_SUCCESS_URL" \
+            VEC_CHECKOUT_CANCEL_URL="$CHECKOUT_CANCEL_URL" \
+            VEC_BILLING_PORTAL_RETURN_URL="$BILLING_PORTAL_RETURN_URL"
+          echo "payments configured"
+
+  deploy:
+    needs: [secrets]
+    if: >-
+      always()
+      && (inputs.stage == 'deploy' || inputs.stage == 'everything')
+      && (needs.secrets.result == 'success' || needs.secrets.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: API (runs alembic upgrade head as its release command)
+        run: |
+          flyctl deploy --config infra/fly.api.toml --dockerfile Dockerfile \
+            -a "$API_APP" --region "${{ inputs.region }}" --yes .
+
+      - name: Three worker lanes (§4.2)
+        run: |
+          set -u
+          for lane in preview sync batch; do
+            flyctl deploy --config "infra/fly.worker-$lane.toml" \
+              --dockerfile infra/Dockerfile.worker \
+              -a "${{ inputs.prefix }}-worker-$lane" --region "${{ inputs.region }}" --yes .
+          done
+
+      - name: Smoke test
+        run: |
+          set -eu
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS "https://${API_APP}.fly.dev/health"; then
+              echo && echo "healthy"
+              exit 0
+            fi
+            echo "not up yet (attempt $attempt)"
+            sleep 10
+          done
+          echo "the API never answered /health — check: flyctl logs -a $API_APP"
+          exit 1

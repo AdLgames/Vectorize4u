@@ -4,6 +4,9 @@ Written to be followed in order, by someone with a Fly account and nothing
 else set up. You run the commands; the only ones that need judgement are
 marked **decide**.
 
+**No terminal?** [docs/deploy-from-github.md](deploy-from-github.md) does
+all of this from GitHub's web UI, which works from a phone.
+
 The plan is deliberately in two halves: **get it converting images first,
 then add payments.** `VEC_PAYMENTS_ENABLED=0` exists for exactly this —
 a staging deployment that works end to end without a Stripe account, so
@@ -41,10 +44,18 @@ is felt on every page.
 fly postgres create --name vectorize-db --region lhr
 fly postgres attach vectorize-db -a vectorize-api
 
-# Redis must be fixed-price, not per-command: Celery polls constantly and
-# per-command pricing bills you for idling (§2).
-fly redis create --name vectorize-redis --region lhr
+# Redis: a machine we own, not `fly redis create` (that is Upstash, and it
+# is metered per command — three idle workers polling all day is a lot of
+# commands for no work done). The stronger reason is eviction: a broker
+# that evicts silently drops paid jobs, so infra/fly.redis.toml pins
+# noeviction and keeps an append-only file on a volume.
+fly apps create vectorize-redis
+fly volumes create redis_data --size 1 --region lhr -a vectorize-redis
+fly deploy -c infra/fly.redis.toml --image redis:7-alpine .
 ```
+
+The workers reach it at `redis://vectorize-redis.internal:6379/0` — private
+network only, never exposed publicly, which is why it has no password.
 
 Note the connection strings. The workers need both; the API needs both.
 
@@ -88,6 +99,11 @@ UTC date into the key, so it rotates daily on its own.
 ```sh
 make images
 ```
+
+The API's image is the `Dockerfile` at the repository root — that name and
+that place, so build detection finds it. The worker's is
+`infra/Dockerfile.worker`: it carries the three tracer binaries, and it is
+never the image a detector should reach for by default.
 
 A broken build is much cheaper to find here than inside a deploy. This is
 also the step that has never run in CI, so expect it to be where a missing

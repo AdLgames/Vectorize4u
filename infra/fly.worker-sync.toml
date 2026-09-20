@@ -9,7 +9,12 @@ primary_region = "lhr"
 # the Makefile pass --dockerfile and the context explicitly.
 
 [env]
-  VEC_ENVIRONMENT = "prod"
+  # "staging" and "prod" harden identically — same secret checks, same
+  # refusal of the local storage backend. The only difference is that
+  # staging may run with VEC_PAYMENTS_ENABLED=0, so the first deploy can
+  # happen before Stripe exists. Change this to "prod" in the same commit
+  # that turns payments on.
+  VEC_ENVIRONMENT = "staging"
   VEC_STORAGE_BACKEND = "r2"
   QUEUES = "queue_sync"
   CONCURRENCY = "4"

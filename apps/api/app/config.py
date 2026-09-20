@@ -11,15 +11,17 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEFAULT_DATABASE_URL = "sqlite+pysqlite:///./vectorize.db"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="VEC_", env_file=".env", extra="ignore")
 
     environment: Literal["dev", "test", "staging", "prod"] = "dev"
-    database_url: str = "sqlite+pysqlite:///./vectorize.db"
+    database_url: str = _DEFAULT_DATABASE_URL
     redis_url: str = "redis://127.0.0.1:6379/0"
 
     # Storage. The local backend exists so the whole service can run and be
@@ -116,6 +118,38 @@ class Settings(BaseSettings):
     # Below this much compute in a day, percentages are meaningless — two
     # jobs against a baseline of one is a 100% deviation and nothing else.
     cost_alert_floor_ms: int = 60_000
+
+    @model_validator(mode="after")
+    def _adopt_platform_database_url(self) -> Settings:
+        """Accept the `DATABASE_URL` a platform injects, when we have none.
+
+        `fly postgres attach` sets `DATABASE_URL` on the app — and so does
+        Heroku, Render and every other platform that has ever attached a
+        database. Requiring the operator to copy it by hand into
+        `VEC_DATABASE_URL`, with the driver renamed, is a step that exists
+        only to be got wrong.
+
+        `VEC_DATABASE_URL` still wins when it is set to something real.
+        """
+        import os
+
+        if self.database_url != _DEFAULT_DATABASE_URL:
+            return self
+        injected = os.environ.get("DATABASE_URL", "").strip()
+        if not injected:
+            return self
+        # SQLAlchemy needs the driver named; platforms write the bare
+        # scheme, and `postgres://` has not been valid since 1.4.
+        for prefix in ("postgresql+psycopg://", "postgresql+psycopg2://", "postgresql+asyncpg://"):
+            if injected.startswith(prefix):
+                self.database_url = injected
+                return self
+        for prefix in ("postgresql://", "postgres://"):
+            if injected.startswith(prefix):
+                self.database_url = "postgresql+psycopg://" + injected[len(prefix) :]
+                return self
+        self.database_url = injected
+        return self
 
     @property
     def is_production(self) -> bool:

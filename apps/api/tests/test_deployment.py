@@ -88,9 +88,23 @@ def test_migrations_run_once_per_deploy_not_once_per_machine():
     assert 'release_command = "python -m alembic upgrade head"' in config
 
 
+def _images() -> dict[str, str]:
+    """The API image is at the repository root under its plain name, so
+    that `fly launch` and every other detector finds it; the worker's is
+    in infra/ because it is never the one a detector should pick."""
+    return {
+        "Dockerfile": (ROOT / "Dockerfile").read_text(),
+        "Dockerfile.worker": (INFRA / "Dockerfile.worker").read_text(),
+    }
+
+
+def test_the_api_image_is_where_build_detection_looks():
+    assert (ROOT / "Dockerfile").exists(), "fly launch cannot detect a build without this"
+    assert "uvicorn" in (ROOT / "Dockerfile").read_text()
+
+
 def test_the_images_do_not_run_as_root():
-    for name in ("Dockerfile.api", "Dockerfile.worker"):
-        body = (INFRA / name).read_text()
+    for name, body in _images().items():
         assert "USER vectorize" in body, name
         assert body.index("USER vectorize") < body.index("CMD"), name
 
