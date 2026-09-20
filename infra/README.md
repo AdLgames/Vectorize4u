@@ -72,9 +72,41 @@ cd apps/api && python ../../infra/r2_lifecycle.py --apply
 fly scale count worker=2 -c infra/fly.worker-batch.toml
 ```
 
+## Machine sizes, and what they cost
+
+The `[[vm]]` sizes in these files are what §4.2's latency promise assumes
+under real traffic: `performance-2x` for the preview and batch lanes,
+`performance-4x` for sync. They are roughly ten times the price of a
+shared VM, and for a deployment with no users they buy nothing.
+
+The deploy workflow's `size` input handles this: `staging` rewrites every
+worker to `shared-cpu-2x` / 2 GB before deploying, `launch` leaves the
+files alone. Trace throughput scales with CPU, so the small sizes will
+convert images perfectly well and simply take longer per file — which is
+the right trade until somebody is waiting.
+
+Switch to `launch` when you have traffic, and re-run `make bench` on the
+production hardware: the p95 numbers in the README were measured on a
+4-core container, not on Fly.
+
+## One lane or three
+
+The deploy workflow's `lanes` input picks the shape:
+
+- **`three`** is §4.2 as written: a worker app per queue, so a 500-file
+  batch physically cannot delay a preview, because it is not running on
+  that machine.
+- **`single`** is one worker taking every lane, at a third of the cost.
+  It gives that guarantee up — while a batch runs, previews queue behind
+  it — and that is the correct trade for a deployment with no users.
+
+Switching is one field. Nothing in the application changes: the lanes are
+a deployment shape, not a code path. Move to `three` before the first
+batch customer, not after.
+
 ## The five things this deployment must get right
 
-1. **Three worker pools, not one.** `make worker` consumes all three lanes
+1. **Three worker pools, not one** (once there are users). `make worker` consumes all three lanes
    locally for convenience. In production each lane is its own Fly app with
    its own `QUEUES`, and the image *refuses to start* without one — a
    worker that quietly took every queue would pass every test and break

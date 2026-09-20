@@ -1,0 +1,38 @@
+# One worker consuming all three lanes — the cheap shape.
+#
+# §4.2 wants three pools with no sharing, and this is not that. It is the
+# deliberate exception, for a deployment with no users: one machine takes
+# previews, single conversions and batches alike, at a third of the cost.
+#
+# **What it gives up, precisely:** while a 500-file batch is running, a
+# preview queues behind it. That is the guarantee the three-app layout
+# exists to hold, and it is the one thing this trade cannot keep. It does
+# not matter when nobody is waiting; it matters the day somebody is.
+#
+# Switching back is one field: run the deploy workflow with lanes=three,
+# and the three-app layout in the other fly.worker-*.toml files takes
+# over. Nothing in the application changes — the lanes are a deployment
+# shape, not a code path.
+#
+#   fly deploy -c infra/fly.worker-single.toml --dockerfile infra/Dockerfile.worker .
+app = "vectorize4u-worker"
+primary_region = "ams"
+
+# No [build] section: see the note in fly.api.toml. The deploy commands in
+# the Makefile pass --dockerfile and the context explicitly.
+
+[env]
+  VEC_ENVIRONMENT = "staging"
+  VEC_STORAGE_BACKEND = "r2"
+  # Every lane, on one machine. The comma-separated list is what the
+  # image's CMD passes to `celery worker -Q`.
+  QUEUES = "queue_preview,queue_sync,queue_batch"
+  CONCURRENCY = "2"
+  # The preview lane's recycle interval, since previews run here too: at
+  # the default 25 every 25th preview pays for an interpreter warm-up,
+  # measured at 1.07 s against a 0.44 s baseline.
+  VEC_MAX_TASKS_PER_CHILD = "200"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
