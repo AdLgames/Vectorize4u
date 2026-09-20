@@ -22,16 +22,12 @@
 app = "vectorize-redis"
 primary_region = "lhr"
 
-[experimental]
-  cmd = [
-    "redis-server",
-    "--appendonly", "yes",
-    "--dir", "/data",
-    # A queued job is work someone has paid for. Refusing writes when full
-    # is loud and recoverable; evicting is silent and is not.
-    "--maxmemory", "768mb",
-    "--maxmemory-policy", "noeviction",
-  ]
+# Arguments to the image's own entrypoint. `--maxmemory-policy noeviction`
+# is the load-bearing one: a queued job is work someone has paid for, and
+# refusing writes when full is loud and recoverable where evicting is
+# silent and is not.
+[processes]
+  app = "redis-server --appendonly yes --dir /data --maxmemory 768mb --maxmemory-policy noeviction"
 
 [[mounts]]
   source = "redis_data"

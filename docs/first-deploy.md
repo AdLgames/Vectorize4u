@@ -4,6 +4,9 @@ Written to be followed in order, by someone with a Fly account and nothing
 else set up. You run the commands; the only ones that need judgement are
 marked **decide**.
 
+**No terminal?** [docs/deploy-from-github.md](deploy-from-github.md) does
+all of this from GitHub's web UI, which works from a phone.
+
 The plan is deliberately in two halves: **get it converting images first,
 then add payments.** `VEC_PAYMENTS_ENABLED=0` exists for exactly this —
 a staging deployment that works end to end without a Stripe account, so
