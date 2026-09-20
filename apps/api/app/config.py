@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # seconds, so ip_hash is an HMAC under a daily-rotating secret.
     ip_hash_secret: str = "dev-only-not-a-secret"
 
+    # A staging deployment that can convert images but not sell them is a
+    # useful thing to have before Stripe exists. Refused in prod below: a
+    # production site that silently cannot take money is not a mode
+    # anybody wants to discover by accident.
+    payments_enabled: bool = True
+
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     # Price ids per plan, e.g. {"pack": "price_...", "starter": "price_..."}.
@@ -151,6 +157,14 @@ class Settings(BaseSettings):
             )
         if self.dev_auth_enabled:
             problems.append("VEC_DEV_AUTH_ENABLED is on — it is a total auth bypass")
+        if not self.payments_enabled:
+            if self.environment == "prod":
+                problems.append(
+                    "VEC_PAYMENTS_ENABLED is off — allowed in staging, never in production"
+                )
+            if problems:
+                raise RuntimeError("unsafe configuration: " + "; ".join(problems))
+            return
         if not self.stripe_webhook_secret:
             problems.append("VEC_STRIPE_WEBHOOK_SECRET is not configured")
         if not self.stripe_secret_key:

@@ -43,6 +43,7 @@ VEC_IP_HASH_SECRET        <32+ random bytes>
 VEC_WEBHOOK_SIGNING_SECRET <32+ random bytes>
 VEC_PUBLIC_API_URL        https://api.example.com
 VEC_ALERT_WEBHOOK_URL     https://hooks.slack.com/services/…   # §8 cost alerts
+VEC_PAYMENTS_ENABLED      0   # staging only: run without Stripe at all
 ```
 
 `VEC_IP_HASH_SECRET` does **not** need a rotation job: `ratelimit.ip_hash`
@@ -50,6 +51,9 @@ mixes the UTC date into the key, so the effective secret changes every day
 on its own. It does need to be a real random value — a plain hash of an
 IPv4 address is brute-forceable in seconds, and a guessable secret is the
 same thing.
+
+For a step-by-step first run, including how to deploy before Stripe
+exists, see [docs/first-deploy.md](../docs/first-deploy.md).
 
 ## Order of operations
 
