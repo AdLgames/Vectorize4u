@@ -11,23 +11,22 @@ it improves.
 from __future__ import annotations
 
 import time
-from contextlib import contextmanager
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 import cv2
 import numpy as np
 
-from engine import config
 from engine.analyse import analyse
 from engine.emit import emit
 from engine.errors import EngineError, TracerCrash
 from engine.ingest import ingest
 from engine.obs import span
+from engine.postprocess import postprocess
 from engine.presets import candidates_for
 from engine.raster import render_svg
 from engine.score import SCORE_VERSION, Scorer
-from engine.postprocess import postprocess
-from engine.svgdoc import parse_svg
+from engine.svgdoc import SvgDoc, parse_svg
 from engine.trace import trace_all
 from engine.types import (
     Candidate,
@@ -201,7 +200,7 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
     )
 
 
-def _min_spacing_px(doc, profile: ImageProfile, options: Options) -> float:
+def _min_spacing_px(doc: SvgDoc, profile: ImageProfile, options: Options) -> float:
     """Convert min_node_spacing_mm into user units.
 
     Applied even when the physical size is only assumed — a cut file with
@@ -214,10 +213,10 @@ def _min_spacing_px(doc, profile: ImageProfile, options: Options) -> float:
     if size.width_mm <= 0 or doc.width <= 0:
         return 0.0
     px_per_mm = doc.width / size.width_mm
-    return options.min_node_spacing_mm * px_per_mm
+    return float(options.min_node_spacing_mm * px_per_mm)
 
 
-def _rescale(doc, factor: float):
+def _rescale(doc: SvgDoc, factor: float) -> SvgDoc:
     for p in doc.paths:
         for sp in p.subpaths:
             sp.start = (sp.start[0] * factor, sp.start[1] * factor)

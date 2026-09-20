@@ -12,16 +12,16 @@ pytest.importorskip("ezdxf")
 
 
 def _profile(**kw) -> ImageProfile:
-    base = dict(
-        source_format="PNG",
-        width=400, height=200, unique_colors=4, edge_density=0.01, edge_pixel_count=500,
-        has_alpha=False, alpha_is_binary=True, alpha_was_premultiplied=False,
-        is_grayscale=False, is_bilevel=False, noise_estimate=10.0,
-        jpeg_artifact_score=0.0, estimated_text_regions=0,
-        dominant_palette=["#000000"], palette_size=2, flat_color_ratio=0.99,
-        source_dpi=None, source_dpi_trusted=False,
-        classification="LOGO_FLAT", classification_confidence=0.9,
-    )
+    base = {
+        "source_format": "PNG",
+        "width": 400, "height": 200, "unique_colors": 4, "edge_density": 0.01,
+        "edge_pixel_count": 500, "has_alpha": False, "alpha_is_binary": True,
+        "alpha_was_premultiplied": False, "is_grayscale": False, "is_bilevel": False,
+        "noise_estimate": 10.0, "jpeg_artifact_score": 0.0, "estimated_text_regions": 0,
+        "dominant_palette": ["#000000"], "palette_size": 2, "flat_color_ratio": 0.99,
+        "source_dpi": None, "source_dpi_trusted": False,
+        "classification": "LOGO_FLAT", "classification_confidence": 0.9,
+    }
     base.update(kw)
     return ImageProfile(**base)  # type: ignore[arg-type]
 

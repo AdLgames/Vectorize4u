@@ -205,8 +205,9 @@ def ingest(
         raise UnsupportedFormat("HEIC support requires pillow-heif")
 
     try:
-        img = Image.open(io.BytesIO(data))
-        img.load()
+        opened = Image.open(io.BytesIO(data))
+        opened.load()
+        img: Image.Image = opened
     except Image.DecompressionBombError as exc:
         raise ImageTooLarge(str(exc)) from exc
     except UnsupportedFormat:

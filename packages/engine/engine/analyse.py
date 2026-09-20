@@ -19,11 +19,13 @@ from engine.types import ImageProfile
 def _flatten_on_white(rgba: np.ndarray) -> np.ndarray:
     a = rgba[:, :, 3:4].astype(np.float32) / 255.0
     rgb = rgba[:, :, :3].astype(np.float32)
-    return (rgb * a + 255.0 * (1 - a)).astype(np.uint8)
+    flat: np.ndarray = (rgb * a + 255.0 * (1 - a)).astype(np.uint8)
+    return flat
 
 
 def to_gray(rgba: np.ndarray) -> np.ndarray:
-    return cv2.cvtColor(_flatten_on_white(rgba), cv2.COLOR_RGB2GRAY)
+    gray: np.ndarray = cv2.cvtColor(_flatten_on_white(rgba), cv2.COLOR_RGB2GRAY)
+    return gray
 
 
 def canny(gray: np.ndarray) -> np.ndarray:
@@ -131,7 +133,7 @@ def dominant_palette(
 
     distinct = np.unique(flat, axis=0)
     if distinct.shape[0] <= k_min:
-        colors = [tuple(int(v) for v in c) for c in distinct]
+        colors = [(int(c[0]), int(c[1]), int(c[2])) for c in distinct]
         return colors, max(1, len(colors))
 
     k_max = int(min(k_max, distinct.shape[0]))
@@ -143,7 +145,7 @@ def dominant_palette(
         ks = [k_max]
     for k in ks:
         cv2.setRNGSeed(config.SEED)
-        compactness, _, cen = cv2.kmeans(
+        compactness, _, cen = cv2.kmeans(  # type: ignore[call-overload]
             flat, k, None, criteria, 3, cv2.KMEANS_PP_CENTERS
         )
         inertias[k] = float(compactness) / flat.shape[0]
@@ -164,7 +166,10 @@ def dominant_palette(
 
     cen = centers[best_k]
     order = np.argsort(cen.sum(axis=1))
-    return [tuple(int(round(v)) for v in cen[i]) for i in order], best_k
+    return (
+        [(int(round(cen[i][0])), int(round(cen[i][1])), int(round(cen[i][2]))) for i in order],
+        best_k,
+    )
 
 
 def flat_color_ratio(rgb: np.ndarray, palette: list[tuple[int, int, int]]) -> float:

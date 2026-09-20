@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Iterable
 from pathlib import Path as FsPath
 
 import cv2
@@ -60,14 +61,19 @@ def downscale(rgba: np.ndarray, max_side: int = config.SCORE_MAX_SIDE) -> np.nda
     if longest <= max_side:
         return rgba
     f = max_side / longest
-    return cv2.resize(rgba, (max(1, int(round(w * f))), max(1, int(round(h * f)))),
-                      interpolation=cv2.INTER_AREA)
+    out: np.ndarray = cv2.resize(
+        rgba,
+        (max(1, int(round(w * f))), max(1, int(round(h * f)))),
+        interpolation=cv2.INTER_AREA,
+    )
+    return out
 
 
 def composite(rgba: np.ndarray) -> np.ndarray:
     """Flatten onto white. Both sides get exactly the same treatment."""
     a = rgba[:, :, 3:4].astype(np.float32) / 255.0
-    return (rgba[:, :, :3].astype(np.float32) * a + 255.0 * (1 - a)).astype(np.uint8)
+    flat: np.ndarray = (rgba[:, :, :3].astype(np.float32) * a + 255.0 * (1 - a)).astype(np.uint8)
+    return flat
 
 
 def _ssim(a: np.ndarray, b: np.ndarray) -> float:
@@ -79,7 +85,7 @@ def _ssim(a: np.ndarray, b: np.ndarray) -> float:
     win = min(7, smallest if smallest % 2 == 1 else smallest - 1)
     if win < 3:
         return 1.0
-    value = float(structural_similarity(ga, gb, win_size=win, data_range=255))
+    value = float(structural_similarity(ga, gb, win_size=win, data_range=255))  # type: ignore[no-untyped-call]
     return float(np.clip(value, 0.0, 1.0))
 
 
@@ -154,7 +160,7 @@ def path_baseline(reference: np.ndarray, quantized: np.ndarray | None = None) ->
     if np.unique(flat, axis=0).shape[0] > 64:
         cv2.setRNGSeed(config.SEED)
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
-        _, labels, centers = cv2.kmeans(
+        _, labels, centers = cv2.kmeans(  # type: ignore[call-overload]
             flat.astype(np.float32), 32, None, criteria, 2, cv2.KMEANS_PP_CENTERS
         )
         rgb = centers[labels.ravel()].reshape(h, w, 3).astype(np.uint8)
@@ -257,7 +263,7 @@ class Scorer:
         )
 
 
-def _weighted(terms: dict[str, float], keys) -> float:
+def _weighted(terms: dict[str, float], keys: Iterable[str]) -> float:
     """Sum of present terms, renormalised over the weights that applied.
 
     Dropping a term (no alpha in the source) must not silently lower the

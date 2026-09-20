@@ -45,7 +45,8 @@ def _ssim_rgb(a: np.ndarray, b: np.ndarray) -> float:
     win = min(7, min(ga.shape) - (1 - min(ga.shape) % 2))
     if win < 3:
         return 1.0
-    return float(structural_similarity(ga, gb, win_size=win, data_range=255))
+    value = structural_similarity(ga, gb, win_size=win, data_range=255)  # type: ignore[no-untyped-call]
+    return float(value)
 
 
 def _deartifact(rgba: np.ndarray, strength: float) -> np.ndarray:
@@ -121,7 +122,9 @@ def quantize(rgba: np.ndarray, k: int) -> tuple[np.ndarray, int]:
 
     cv2.setRNGSeed(config.SEED)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.3)
-    _, labels, centers = cv2.kmeans(flat, k, None, criteria, 4, cv2.KMEANS_PP_CENTERS)
+    _, labels, centers = cv2.kmeans(  # type: ignore[call-overload]
+        flat, k, None, criteria, 4, cv2.KMEANS_PP_CENTERS
+    )
     centers = np.clip(centers, 0, 255)
 
     # Merge centres that no human can tell apart.

@@ -64,7 +64,8 @@ def test_soft_alpha_is_matted(fx):
 
 def test_over_cleaning_is_backed_off(fx, monkeypatch):
     """If the filters destroyed the artwork, ship the original instead."""
-    from engine import config, preprocess as pp
+    from engine import config
+    from engine import preprocess as pp
 
     monkeypatch.setattr(config, "PREPROCESS_SSIM_FLOOR", 1.01)
     monkeypatch.setattr(pp.config, "PREPROCESS_SSIM_FLOOR", 1.01)

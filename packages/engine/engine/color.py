@@ -81,12 +81,13 @@ def delta_e2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     rc = 2 * np.sqrt(cp_bar**7 / (cp_bar**7 + 25.0**7 + 1e-12))
     rt = -rc * np.sin(np.radians(2 * dtheta))
 
-    return np.sqrt(
+    result: np.ndarray = np.sqrt(
         (dlp / sl) ** 2
         + (dcp / sc) ** 2
         + (dHp / sh) ** 2
         + rt * (dcp / sc) * (dHp / sh)
     )
+    return result
 
 
 def rgb_delta_e(a: np.ndarray, b: np.ndarray) -> np.ndarray:

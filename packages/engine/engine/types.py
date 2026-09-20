@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 Classification = Literal[
@@ -41,7 +41,7 @@ PhysicalSizeSource = Literal["user", "metadata", "assumed"]
 TIER_CANDIDATES: dict[str, int] = {"fast": 1, "standard": 4, "max": 8}
 
 
-class Warning_(str, Enum):
+class Warning_(StrEnum):
     """Stable warning codes. Surfaced by the API and the UI verbatim."""
 
     PHOTO_INPUT = "photo_input"

@@ -12,7 +12,7 @@ the candidate generator take the union of the top two classes (§3.4).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -124,7 +124,7 @@ def classify(
 
     positive = {k: max(0.0, v) for k, v in s.items()}
     total = sum(positive.values())
-    best = max(positive, key=lambda k: positive[k])
+    best = cast(Classification, max(positive, key=lambda k: positive[k]))
     confidence = (positive[best] / total) if total > 0 else 0.0
     return best, round(confidence, 4), {k: round(v, 3) for k, v in s.items()}
 

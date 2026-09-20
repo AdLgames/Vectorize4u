@@ -12,6 +12,7 @@ what actually happened on a given host.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import resource
@@ -71,19 +72,16 @@ def sandbox_mode() -> str:
 def _limits() -> None:  # pragma: no cover - runs in the forked child
     """Applied in the child between fork and exec."""
     mem = config.SUBPROCESS_MEMORY_MB * 1024 * 1024
-    try:
-        resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
-    except (ValueError, OSError):
-        pass
     cpu = config.SUBPROCESS_CPU_S
-    try:
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 2))
-    except (ValueError, OSError):
-        pass
-    try:
-        resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
-    except (ValueError, OSError):
-        pass
+    # A limit the kernel refuses is not fatal: the timeout in the parent is
+    # the backstop, and sandbox_mode() reports what actually applied.
+    for which, limits in (
+        (resource.RLIMIT_AS, (mem, mem)),
+        (resource.RLIMIT_CPU, (cpu, cpu + 2)),
+        (resource.RLIMIT_NPROC, (64, 64)),
+    ):
+        with contextlib.suppress(ValueError, OSError):
+            resource.setrlimit(which, limits)
     os.setsid()
 
 

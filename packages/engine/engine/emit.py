@@ -108,7 +108,9 @@ def to_dxf(doc: SvgDoc, size: PhysicalSize, *, tolerance_mm: float, units: Units
     try:
         import ezdxf
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise RuntimeError("DXF export requires ezdxf (pip install 'vectorize-engine[emit]')") from exc
+        raise RuntimeError(
+            "DXF export requires ezdxf (pip install 'vectorize-engine[emit]')"
+        ) from exc
 
     # 4 = millimetres, 1 = inches, per the DXF spec.
     insunits = 4 if units == "mm" else 1
@@ -118,7 +120,7 @@ def to_dxf(doc: SvgDoc, size: PhysicalSize, *, tolerance_mm: float, units: Units
 
     tol_units = max(1e-4, tolerance_mm * (doc.width / size.width_mm if size.width_mm else 1.0))
 
-    drawing = ezdxf.new(dxfversion="R2010", setup=True)
+    drawing = ezdxf.new(dxfversion="R2010", setup=True)  # type: ignore[attr-defined]
     drawing.header["$INSUNITS"] = insunits
     drawing.header["$MEASUREMENT"] = 1 if units == "mm" else 0
     msp = drawing.modelspace()
@@ -144,11 +146,12 @@ def to_pdf(svg: str, size: PhysicalSize) -> bytes:
         raise RuntimeError(
             "PDF export requires cairosvg (pip install 'vectorize-engine[emit]')"
         ) from exc
-    return cairosvg.svg2pdf(
+    blob: bytes = cairosvg.svg2pdf(
         bytestring=svg.encode("utf-8"),
         output_width=size.width_mm * 72.0 / MM_PER_INCH,
         output_height=size.height_mm * 72.0 / MM_PER_INCH,
     )
+    return blob
 
 
 def to_png(svg: str, *, width: int) -> bytes:
