@@ -23,6 +23,12 @@ const OTHER = [
   { href: "/account", label: "Account" },
 ];
 
+const TOOLS = [
+  { href: "/tools/svg-minifier", label: "SVG minifier" },
+  { href: "/tools/svg-to-png", label: "SVG to PNG" },
+  { href: "/tools/palette-extractor", label: "Palette extractor" },
+];
+
 const columnStyle: React.CSSProperties = {
   display: "grid",
   gap: 8,
@@ -65,6 +71,14 @@ export default function SiteFooter() {
         <div style={columnStyle}>
           <h2 style={headingStyle}>Convert</h2>
           {CONVERSION_PAGES.map((page) => (
+            <Link key={page.href} href={page.href} style={linkStyle}>
+              {page.label}
+            </Link>
+          ))}
+        </div>
+        <div style={columnStyle}>
+          <h2 style={headingStyle}>Free tools</h2>
+          {TOOLS.map((page) => (
             <Link key={page.href} href={page.href} style={linkStyle}>
               {page.label}
             </Link>

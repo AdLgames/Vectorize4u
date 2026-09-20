@@ -28,6 +28,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     { url: `${SITE}/api`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE}/tools`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    {
+      url: `${SITE}/tools/svg-minifier`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    { url: `${SITE}/tools/svg-to-png`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    {
+      url: `${SITE}/tools/palette-extractor`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
     { url: `${SITE}/batch`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
   ];
 }
