@@ -21,10 +21,11 @@ from app.models import CreditGrant, StripeEvent, Subscription, User, utcnow
 
 router = APIRouter(prefix="/v1", tags=["billing"])
 
-# §10 pricing. Formats are never tier-gated on paid plans: DXF is the reason
-# cutters show up, and gating it behind Pro contradicts §0.
-PLAN_CREDITS = {"starter": 100, "pro": 1000, "api": 500}
-PACK_CREDITS = 50
+# §10 pricing lives in app/catalog.py — one source of truth shared with
+# checkout and with the bootstrap script. Formats are never tier-gated on
+# paid plans: DXF is the reason cutters show up, and gating it behind Pro
+# contradicts §0.
+from app.catalog import PACK_CREDITS, PLAN_CREDITS  # noqa: E402
 
 HANDLED = {
     "checkout.session.completed",

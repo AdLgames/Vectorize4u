@@ -17,7 +17,16 @@ from fastapi.responses import JSONResponse
 
 from app import errors
 from app.config import settings
-from app.routers import account, batch, dev_auth, files, jobs, stripe_webhooks, uploads
+from app.routers import (
+    account,
+    batch,
+    checkout,
+    dev_auth,
+    files,
+    jobs,
+    stripe_webhooks,
+    uploads,
+)
 
 log = logging.getLogger("vectorize.api")
 
@@ -59,6 +68,7 @@ app.include_router(uploads.router)
 app.include_router(jobs.router)
 app.include_router(batch.router)
 app.include_router(account.router)
+app.include_router(checkout.router)
 app.include_router(stripe_webhooks.router)
 app.include_router(files.router)
 

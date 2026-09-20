@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { type Account, ApiError, getAccount } from "@/lib/api";
 import { useAuth } from "./AuthProvider";
 import SignIn from "./SignIn";
-import { Button, Card, Meter, Muted } from "./ui";
+import { useCheckout } from "./useCheckout";
+import { Button, Card, Meter, Muted, Notice } from "./ui";
 
 /**
  * Credits are shown **per grant, with expiry**.
@@ -27,6 +28,7 @@ export default function AccountPanel() {
   const [account, setAccount] = useState<Account | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { token, email: signedInAs, signOut } = useAuth();
+  const { buy, manage, busy, error: billingError } = useCheckout();
 
   useEffect(() => {
     if (!token) return;
@@ -52,6 +54,11 @@ export default function AccountPanel() {
 
   return (
     <div style={{ display: "grid", gap: "var(--space-6)" }}>
+      {billingError && (
+        <Notice tone="magenta" title="Billing">
+          {billingError}
+        </Notice>
+      )}
       <div
         style={{
           display: "grid",
@@ -115,7 +122,12 @@ export default function AccountPanel() {
             </Muted>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: "var(--space-3)", flexWrap: "wrap" }}>
-            <Button size="sm">Buy 50 credits</Button>
+            <Button size="sm" variant="primary" disabled={busy !== null} onClick={() => void buy("pack")}>
+              {busy === "pack" ? "Taking you to Stripe…" : "Buy 50 credits"}
+            </Button>
+            <Button size="sm" disabled={busy !== null} onClick={() => void manage()}>
+              {busy === "portal" ? "Opening…" : "Manage billing"}
+            </Button>
             <Button size="sm" onClick={() => void signOut()}>
               Sign out{signedInAs ? ` (${signedInAs})` : ""}
             </Button>

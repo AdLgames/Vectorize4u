@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -85,6 +86,15 @@ class Settings(BaseSettings):
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    # Price ids per plan, e.g. {"pack": "price_...", "starter": "price_..."}.
+    # Produced by scripts/bootstrap_stripe.py. Referenced by id rather than
+    # looked up by name, so a duplicate made in the dashboard can never be
+    # picked up silently.
+    stripe_prices: dict[str, str] = Field(default_factory=dict)
+    # Where Stripe sends the browser back to.
+    checkout_success_url: str = "http://localhost:3000/checkout/success"
+    checkout_cancel_url: str = "http://localhost:3000/#pricing"
+    billing_portal_return_url: str = "http://localhost:3000/account"
 
     webhook_signing_secret: str = "dev-only-not-a-secret"
 
@@ -132,6 +142,16 @@ class Settings(BaseSettings):
             problems.append("VEC_DEV_AUTH_ENABLED is on — it is a total auth bypass")
         if not self.stripe_webhook_secret:
             problems.append("VEC_STRIPE_WEBHOOK_SECRET is not configured")
+        if not self.stripe_secret_key:
+            problems.append("VEC_STRIPE_SECRET_KEY is not configured")
+        if self.stripe_secret_key.startswith("sk_test_"):
+            problems.append("VEC_STRIPE_SECRET_KEY is a test key")
+        missing = [p for p in ("pack", "starter", "pro") if not self.stripe_prices.get(p)]
+        if missing:
+            problems.append(f"no Stripe price configured for: {', '.join(missing)}")
+        for name in ("checkout_success_url", "checkout_cancel_url", "billing_portal_return_url"):
+            if "localhost" in getattr(self, name):
+                problems.append(f"VEC_{name.upper()} still points at localhost")
         if problems:
             raise RuntimeError("unsafe configuration: " + "; ".join(problems))
 

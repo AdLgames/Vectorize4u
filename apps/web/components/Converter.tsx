@@ -19,6 +19,7 @@ import ScoreCard from "./ScoreCard";
 import Viewer from "./Viewer";
 import { PrimaryNotice, SecondaryNotices } from "./WarningNotice";
 import SignIn from "./SignIn";
+import { useCheckout } from "./useCheckout";
 import { Button, Card, Muted, Notice } from "./ui";
 
 /**
@@ -55,8 +56,10 @@ export default function Converter({
   const [turnstile, setTurnstile] = useState(false);
   const [busy, setBusy] = useState(false);
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [outOfCredits, setOutOfCredits] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const { token, signedIn, credits, refreshCredits } = useAuth();
+  const checkout = useCheckout();
   const [options, setOptions] = useState<JobOptions>({
     format: defaultFormats,
     detail: "balanced",
@@ -151,6 +154,7 @@ export default function Converter({
     }
     setBusy(true);
     setNeedsSignIn(false);
+    setOutOfCredits(false);
     try {
       setJob(await unlockJob(job.id, token));
       // The header shows this number too; leaving it stale after a purchase
@@ -158,7 +162,7 @@ export default function Converter({
       await refreshCredits();
     } catch (error) {
       if (error instanceof ApiError && error.problem.error_code === "insufficient_credits") {
-        setMessage("You're out of downloads. A $9 credit pack adds 50 that never expire.");
+        setOutOfCredits(true);
       } else {
         setMessage(error instanceof ApiError ? error.problem.detail : "Unlock failed.");
       }
@@ -252,6 +256,25 @@ export default function Converter({
             <>
               {needsSignIn && !signedIn && (
                 <SignIn reason="Sign in to download" compact />
+              )}
+              {outOfCredits && (
+                <Notice
+                  tone="amber"
+                  title="You're out of downloads"
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={checkout.busy !== null}
+                      onClick={() => void checkout.buy("pack")}
+                    >
+                      {checkout.busy === "pack" ? "Taking you to Stripe…" : "Buy 50 credits — $9"}
+                    </Button>
+                  }
+                >
+                  A $9 credit pack adds 50 downloads that never expire. Your preview is kept,
+                  so you will come straight back to this result.
+                </Notice>
               )}
               <PrimaryNotice
                 job={job}

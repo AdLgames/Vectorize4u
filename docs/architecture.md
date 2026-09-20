@@ -10,7 +10,7 @@ What exists today, and how the pieces that do not yet exist attach to it.
 | 1 | Full engine: all classes, potrace, post-processing, physical size, corpus, `make bench` gate | **Built**, against a synthetic corpus. Calibration is provisional until real images land. |
 | 2 | Service: `/v1`, three queue lanes, presigned uploads, SSRF rules, retention | **Built.** Runs on SQLite + local storage for dev and tests; Postgres + R2 + Redis in production. |
 | 3 | Web app + SEO foundation | **Built.** Converter, tile preview, slider, advanced panel, batch grid, `/png-to-svg`, `/convert-for-cricut`, sitemap, JSON-LD, Lighthouse budget. Auth is stubbed — see below. |
-| 4 | Money | **Partly built.** Auth, grants, ledger and unlock work end to end; the Stripe event → grant mapping is tested. §10's pricing decision is **resolved** (below). What is missing is checkout: the Stripe price objects and the redirect. |
+| 4 | Money | **Built, unexercised.** Auth, grants, ledger, unlock, checkout, the billing portal and the price list all work and are tested. Stripe itself has never run against a real account — that needs keys. §10's pricing decision is **resolved** (below). |
 | 5–8 | Batch polish, API product, SEO expansion, refinement | Batch and webhooks are built; the rest not started. |
 
 ## The engine (`/packages/engine`)
@@ -255,9 +255,33 @@ while it is set. It exists because a magic link cannot be clicked by a
 script, and the path that takes money would otherwise never run in a
 browser here.
 
-## What is stubbed
+## Payments
 
-**Checkout.** Stripe events map to grants and are tested, and the prices
-are decided (above). What is missing is the Stripe price objects and the
-redirect — "Buy 50 credits" is inert. Sign-in and unlock work; only the
-part that takes the money does not.
+**Stripe hosted Checkout.** The server creates a session and the browser
+follows the URL Stripe returns, so nothing Stripe-shaped ships in the
+bundle — no publishable key, no SDK.
+
+**Starting a checkout grants nothing.** Credits appear when the webhook
+arrives and maps to a grant. A browser coming back from Stripe is a
+statement about the browser, not about whether the payment settled, and
+treating the redirect as proof is how people end up with credits they did
+not pay for. The success page polls the real balance rather than asserting
+a number it cannot know, and says so while it waits.
+
+**The price list is data, in one file.** `app/catalog.py` is what the
+bootstrap script pushes into Stripe, what the webhook handlers grant
+against, and what `GET /v1/plans` serves — so a marketing page drifting
+away from the real price is a test failure rather than a support ticket.
+
+`scripts/bootstrap_stripe.py` creates the products and prices, tagged with
+`vectorize_plan` metadata so a re-run finds what it made last time. Prices
+are immutable in Stripe: changing $12 to $9 means a new price and a
+repoint, and doing that by hand across test and live is how the two
+environments drift apart. It never edits or archives an existing price —
+that has billing consequences for existing subscribers.
+
+## What is unexercised
+
+**Stripe against a real account.** Everything above is tested against a
+stub. `make stripe-bootstrap` has not been run for real, because that needs
+keys. Test mode is enough and costs nothing.

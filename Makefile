@@ -6,7 +6,8 @@ PIP ?= .venv/bin/pip
 ENGINE := packages/engine
 
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
-        bench-baseline ab ab-report kit api worker web web-build web-lint e2e clean
+        bench-baseline ab ab-report kit api worker web web-build web-lint e2e \
+        stripe-bootstrap clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -62,9 +63,12 @@ web: ## run the Next.js dev server against a local API (dev sign-in on)
 	cd apps/web && NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000 \
 	  NEXT_PUBLIC_DEV_AUTH=1 npm run dev
 
-e2e: ## drive the signed-in flow in a real browser (needs `make api` + `make web`)
+e2e: ## drive the app in a real browser (needs `make api` + `make web`)
 	cd apps/web && npm install --no-save playwright \
-	  && node e2e/smoke.mjs && node e2e/signed-in.mjs
+	  && node e2e/smoke.mjs && node e2e/signed-in.mjs && node e2e/checkout.mjs
+
+stripe-bootstrap: ## create this product's Stripe products and prices (idempotent)
+	cd apps/api && ../../$(PY) scripts/bootstrap_stripe.py
 
 web-build: ## production build of the web app
 	cd apps/web && npm run build

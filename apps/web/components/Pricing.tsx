@@ -1,4 +1,7 @@
-import { Button } from "./ui";
+"use client";
+
+import { Button, Notice } from "./ui";
+import { useCheckout } from "./useCheckout";
 
 /**
  * §10's open decision, resolved.
@@ -13,8 +16,18 @@ import { Button } from "./ui";
  * Without the one-off pack we monetize none of them.
  */
 
-export const PLANS = [
+export const PLANS: {
+  planId: string | null;
+  name: string;
+  note: string;
+  price: string;
+  per: string;
+  detail: string;
+  cta: string;
+  highlight: boolean;
+}[] = [
   {
+    planId: null,
     name: "Free",
     note: "no card needed",
     price: "$0",
@@ -24,6 +37,7 @@ export const PLANS = [
     highlight: false,
   },
   {
+    planId: "pack",
     name: "Credit pack",
     note: "one-off",
     price: "$9",
@@ -33,6 +47,7 @@ export const PLANS = [
     highlight: true,
   },
   {
+    planId: "starter",
     name: "Starter",
     note: "",
     price: "$12",
@@ -42,6 +57,7 @@ export const PLANS = [
     highlight: false,
   },
   {
+    planId: "pro",
     name: "Pro",
     note: "",
     price: "$29",
@@ -53,9 +69,15 @@ export const PLANS = [
 ];
 
 export default function Pricing() {
+  const { buy, busy, error } = useCheckout();
+
   return (
-    <section aria-labelledby="pricing" style={{ display: "grid", gap: "var(--space-4)" }}>
-      <h2 id="pricing" style={{ fontSize: "var(--text-h2)", margin: 0 }}>
+    <section
+      id="pricing"
+      aria-labelledby="pricing-heading"
+      style={{ display: "grid", gap: "var(--space-4)" }}
+    >
+      <h2 id="pricing-heading" style={{ fontSize: "var(--text-h2)", margin: 0 }}>
         Pricing
       </h2>
       <p style={{ color: "var(--ink-500)", margin: 0, maxWidth: "48ch" }}>
@@ -104,12 +126,27 @@ export default function Pricing() {
             <p style={{ fontSize: "var(--text-sm)", color: "var(--ink-500)", margin: 0 }}>
               {plan.detail}
             </p>
-            <Button variant={plan.highlight ? "primary" : "secondary"} full>
-              {plan.cta}
+            <Button
+              variant={plan.highlight ? "primary" : "secondary"}
+              full
+              disabled={busy !== null || !plan.planId}
+              onClick={plan.planId ? () => void buy(plan.planId as string) : undefined}
+            >
+              {/* `busy === plan.planId` alone is a trap: Free has no plan id,
+                  so null === null made its button permanently read as
+                  mid-purchase. */}
+              {plan.planId !== null && busy === plan.planId
+                ? "Taking you to Stripe…"
+                : plan.cta}
             </Button>
           </div>
         ))}
       </div>
+      {error && (
+        <Notice tone="magenta" title="Couldn't start checkout">
+          {error}
+        </Notice>
+      )}
       <p style={{ fontSize: "var(--text-xs)", color: "var(--ink-500)", margin: 0 }}>
         Formats are never gated on paid plans. DXF is the reason cutter users show up; putting
         it behind the top tier would be a trick.

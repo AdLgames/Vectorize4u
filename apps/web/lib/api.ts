@@ -298,3 +298,49 @@ export async function getAccount(token: string): Promise<Account> {
   const { data } = await request<Account>("/v1/account", { token });
   return data;
 }
+
+export type Plan = {
+  id: string;
+  name: string;
+  kind: "subscription" | "pack";
+  amount: number;
+  currency: string;
+  credits: number;
+  description: string;
+  batch_limit: number;
+};
+
+export async function getPlans(): Promise<Plan[]> {
+  const { data } = await request<Plan[]>("/v1/plans");
+  return data;
+}
+
+/**
+ * Start a purchase.
+ *
+ * Returns the Stripe-hosted Checkout URL to send the browser to. Nothing
+ * Stripe-shaped ships in this bundle — no publishable key, no SDK — and
+ * nothing is granted here: credits appear when the webhook lands.
+ */
+export async function startCheckout(
+  plan: string,
+  token: string,
+  returnTo?: string,
+): Promise<string> {
+  const { data } = await request<{ checkout_url: string }>("/v1/checkout", {
+    method: "POST",
+    token,
+    // A double-clicked button must not create two checkouts.
+    headers: { "Idempotency-Key": `checkout-${plan}-${Date.now()}` },
+    body: JSON.stringify({ plan, return_to: returnTo }),
+  });
+  return data.checkout_url;
+}
+
+export async function openBillingPortal(token: string): Promise<string> {
+  const { data } = await request<{ portal_url: string }>("/v1/billing/portal", {
+    method: "POST",
+    token,
+  });
+  return data.portal_url;
+}

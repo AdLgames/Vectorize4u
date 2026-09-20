@@ -66,6 +66,7 @@ tune and debug it.
 | `{url}` cannot reach internal services | `app/fetcher.py` | 25 cases in `test_fetcher.py` |
 | Deleted jobs are unreachable immediately | `app/retention.py` | `test_delete_purges_immediately` |
 | A session cannot be forged, replayed or downgraded | `app/auth.py` | 17 cases in `test_auth_supabase.py` |
+| Starting a checkout grants nothing; the webhook does | `app/routers/checkout.py` | `test_checkout_grants_nothing_on_its_own` |
 | LCP < 2.0s, CLS < 0.05, Lighthouse ≥ 95 | `lighthouserc.json` | measured: 99/100/96/100, LCP 1.9s, CLS 0 |
 
 ## What is not built
@@ -73,14 +74,11 @@ tune and debug it.
 Phases 5–8 beyond batch: the public API product (keys exist; docs and
 overage caps do not), SEO expansion, and the Phase 8 refinement loop.
 
-One thing inside the built phases is deliberately stubbed:
-
-- **Checkout.** Sign-in and unlock work end to end — Supabase magic link,
-  a credit spent, real files delivered. Stripe events map to grants and
-  reconcile with zero drift. What is missing is the Stripe price objects
-  and the redirect, so "Buy 50 credits" is inert. §10's pricing decision is
-  resolved (Free / $9 credit pack / $12 Starter / $29 Pro — see
-  docs/architecture.md).
+One step remains before money can move: **Stripe has never run against a
+real account.** Checkout, the billing portal and the price list are built
+and tested against a stub, and `make stripe-bootstrap` creates the products
+and prices — but it needs your keys. Test mode is enough, and is free.
+See `docs/runbook.md`.
 
 ## The evidence, not the metric
 
