@@ -1,16 +1,29 @@
-# Build context hygiene. Without this the context includes .venv, node_modules
-# and every benchmark output, which is gigabytes for a few megabytes of code.
+# Build context hygiene.
+#
+# Patterns here match from the context root, so a bare `node_modules`
+# excludes the one at the top and *not* apps/web/node_modules — which is
+# 816 MB, uploaded to Fly's remote builder on every deploy, for an image
+# that contains no JavaScript at all. Hence the globs.
 .git
-.venv
-node_modules
+**/.venv
+**/node_modules
 **/__pycache__
 **/*.pyc
 **/.pytest_cache
 **/.mypy_cache
 **/.ruff_cache
-apps/web/.next
+**/.next
+**/*.log
+
+# Local development state: a SQLite database and a local object store.
 apps/api/.storage
 apps/api/dev.db
+
+# Benchmark and acceptance output. The corpus itself stays — it is small,
+# and it is what `make bench` grades against.
 benchmarks/out
 benchmarks/ab/out
 benchmarks/acceptance/out
+
+# The web app is a Vercel project; neither image serves it.
+apps/web
