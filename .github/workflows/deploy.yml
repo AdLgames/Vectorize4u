@@ -46,6 +46,18 @@ on:
         required: true
         type: string
         default: vectorize4u
+      size:
+        description: >-
+          "staging" runs every worker on a small shared VM — right for a
+          deployment nobody is using yet. "launch" uses the performance
+          VMs §4.2 assumes, which cost roughly ten times as much and are
+          what the preview latency target was written for.
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - launch
       db_app:
         description: >-
           Existing Postgres app to attach to. Separate from the prefix so
@@ -181,10 +193,23 @@ jobs:
             echo "$name generated and set on every app"
           done
 
-      - name: Point the configs at this run's region
+      - name: Point the configs at this run
         run: |
+          # An app's region and VM size come from its fly.toml, which
+          # cannot read a workflow input. Rewritten here, in the ephemeral
+          # checkout, so one field still drives every app — and so machines
+          # are never placed away from the volume bootstrap just created.
           sed -i 's/^primary_region = .*/primary_region = "${{ inputs.region }}"/' infra/*.toml
-          grep -H primary_region infra/*.toml
+          if [ "${{ inputs.size }}" = "staging" ]; then
+            # The performance VMs in these files are sized for §4.2's
+            # latency promise under real traffic. Running them for a
+            # deployment with no users is an expensive way to keep a
+            # machine idle.
+            sed -i 's/^  size = "performance-[0-9]*x"/  size = "shared-cpu-2x"/' \
+              infra/fly.worker-*.toml
+            sed -i 's/^  memory = "[48]gb"/  memory = "2gb"/' infra/fly.worker-*.toml
+          fi
+          grep -H -E 'primary_region|^  size|^  memory' infra/*.toml
 
       - name: Redis
         run: |
@@ -269,10 +294,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Point the configs at this run's region
+      - name: Point the configs at this run
         run: |
+          # An app's region and VM size come from its fly.toml, which
+          # cannot read a workflow input. Rewritten here, in the ephemeral
+          # checkout, so one field still drives every app — and so machines
+          # are never placed away from the volume bootstrap just created.
           sed -i 's/^primary_region = .*/primary_region = "${{ inputs.region }}"/' infra/*.toml
-          grep -H primary_region infra/*.toml
+          if [ "${{ inputs.size }}" = "staging" ]; then
+            # The performance VMs in these files are sized for §4.2's
+            # latency promise under real traffic. Running them for a
+            # deployment with no users is an expensive way to keep a
+            # machine idle.
+            sed -i 's/^  size = "performance-[0-9]*x"/  size = "shared-cpu-2x"/' \
+              infra/fly.worker-*.toml
+            sed -i 's/^  memory = "[48]gb"/  memory = "2gb"/' infra/fly.worker-*.toml
+          fi
+          grep -H -E 'primary_region|^  size|^  memory' infra/*.toml
 
       - name: API (runs alembic upgrade head as its release command)
         run: |
