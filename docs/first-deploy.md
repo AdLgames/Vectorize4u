@@ -100,6 +100,11 @@ UTC date into the key, so it rotates daily on its own.
 make images
 ```
 
+The API's image is the `Dockerfile` at the repository root — that name and
+that place, so build detection finds it. The worker's is
+`infra/Dockerfile.worker`: it carries the three tracer binaries, and it is
+never the image a detector should reach for by default.
+
 A broken build is much cheaper to find here than inside a deploy. This is
 also the step that has never run in CI, so expect it to be where a missing
 system library shows up; the fix is a line in `infra/Dockerfile.*`.

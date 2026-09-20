@@ -1,8 +1,12 @@
-# The API image. It does not trace — that is the worker's job — but it
-# shares the engine package, so it shares the base.
+# The API image.
 #
-# Build from the repository root:
-#   docker build -f infra/Dockerfile.api -t vectorize-api .
+# At the repository root, with this exact name, because that is where
+# `fly launch` and every other build-detection tool looks. The worker's
+# image is infra/Dockerfile.worker — it needs the tracer binaries and this
+# one does not, and it is never the image a detector should pick by
+# default.
+#
+#   docker build -t vectorize-api .
 
 FROM python:3.11-slim-bookworm AS runtime
 

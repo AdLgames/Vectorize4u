@@ -34,10 +34,32 @@ generated during bootstrap and set on every app at once, because a
 signing key that differs between two apps is a silent, intermittent
 failure and not something anyone should be typing by hand.
 
+## Do not use Fly's own launch wizard
+
+`fly launch`, and the "deploy from GitHub" flow in Fly's dashboard, exist
+to take one repository and make one app out of it. This is five apps, and
+three of them are the same image with different `QUEUES` — the whole point
+of §4.2 is that batch work runs somewhere a preview is not. A wizard
+cannot infer that, and if it guesses it will produce one app that consumes
+every lane, which passes every test and breaks the one guarantee the
+product sells.
+
+It will also fail before it gets that far, with:
+
+```
+Could not find a Dockerfile, nor detect a runtime or framework from source code.
+```
+
+There *is* now a `Dockerfile` at the root — it builds the API — so
+detection works. But the wizard still only knows how to make one app.
+Use the workflow below instead.
+
 ## Then: run it
 
-**Actions → Deploy → Run workflow.** Three stages, in order, because they
-fail differently and you want to know which one broke:
+**Actions → Deploy → Run workflow.** It asks for a region, an
+organisation and a name prefix — the defaults are already the ones this
+account uses. Three stages, in order, because they fail differently and
+you want to know which one broke:
 
 1. **`bootstrap`** — creates the five apps, the Postgres cluster and the
    Redis machine, attaches the database to each app, generates the
