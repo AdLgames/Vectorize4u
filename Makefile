@@ -7,7 +7,8 @@ ENGINE := packages/engine
 
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
         bench-baseline ab ab-report kit api worker web web-build web-lint e2e \
-        stripe-bootstrap types images deploy-api deploy-workers r2-lifecycle clean
+        stripe-bootstrap types images deploy-api deploy-workers r2-lifecycle \
+        calibrate refine-report clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -104,6 +105,12 @@ web-lint: ## eslint + tsc + the doorway-page guard for the web app
 
 bench: ## per-category means + regression gate against benchmarks/baseline.json
 	$(PY) benchmarks/run.py
+
+calibrate: ## recompute k_class from evidence (dry run; --write to apply)
+	$(PY) benchmarks/calibrate.py
+
+refine-report: ## does localised refinement earn its nodes? (§1, Phase 8)
+	$(PY) benchmarks/refine_report.py
 
 bench-baseline: ## regenerate baseline.json (same PR as any score_version bump)
 	$(PY) benchmarks/run.py --write-baseline

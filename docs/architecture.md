@@ -313,6 +313,34 @@ What would change the verdict is a real corpus: this one is synthetic and
 has no genuine small type, which is the case §1 names.
 `benchmarks/refine_report.py` reproduces the table above on any corpus.
 
+## Calibration: what the corpus cannot tell us
+
+`node_baseline = k_class x edge_pixel_count / 1000` decides what counts as
+too many points, and `engine/calibration.json` still carries Phase 1
+bootstrap values — someone's estimate. `make calibrate` measures what a
+selected trace actually costs per class and reports what the numbers
+*would* be. On the current corpus it declines to move any of them, and the
+reason is the useful part:
+
+| class | n | current k | measured median | spread |
+|---|---|---|---|---|
+| LOGO_FLAT | 7 | 2.00 | 103.51 | 227.27 |
+| every other class | ≤ 1 | — | — | — |
+
+Seven samples whose spread is twice their median is not a measurement. The
+range inside LOGO_FLAT alone runs from 4.7 (a clean flat logo) to 261 (the
+same logo at 1/4 the resolution, where every edge pixel buys far more
+nodes), so the median describes neither. Writing 103 would push the clean
+logos below their own baseline, where the penalty clamps and stops
+discriminating between candidates at all — strictly worse than the
+bootstrap value it replaced.
+
+So `calibrate.py` refuses to write a class whose samples disagree with each
+other, and the real fix is §3.9's 60–100 hand-labelled images. The same
+script reads production jobs with `--from db`, which is what
+`job_candidates` and `jobs.profile` are persisted for (§5): calibration can
+be redone from months of real work without having kept a single pixel.
+
 ## What is unexercised
 
 **Stripe against a real account.** Everything above is tested against a
