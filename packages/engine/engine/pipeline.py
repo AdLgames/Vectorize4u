@@ -163,18 +163,35 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
     winner = max(usable, key=lambda c: c.score.total)  # type: ignore[union-attr]
     winner.selected = True
 
+    doc = parse_svg(winner.svg)  # type: ignore[arg-type]
+    # trace_input may have been upscaled; bring geometry back to the
+    # reference's coordinate system so physical size stays honest.
+    if pre.scale != 1.0:
+        doc = _rescale(doc, 1.0 / pre.scale)
+
+    score = winner.score  # type: ignore[assignment]
+    refinements = 0
+    if _should_refine(options):
+        with timer("refine"):
+            from engine.refine import refine as refine_regions
+
+            refined = refine_regions(
+                doc,
+                scorer=scorer,
+                trace_input=pre.trace_input,
+                input_scale=pre.scale,
+                params=winner.params,
+                base_score=score,  # type: ignore[arg-type]
+            )
+            doc, score, refinements = refined.doc, refined.score, refined.regions_kept
+
     with timer("postprocess"):
-        doc = parse_svg(winner.svg)  # type: ignore[arg-type]
-        # trace_input may have been upscaled; bring geometry back to the
-        # reference's coordinate system so physical size stays honest.
-        if pre.scale != 1.0:
-            doc = _rescale(doc, 1.0 / pre.scale)
 
         min_spacing_px = _min_spacing_px(doc, profile, options)
         post = postprocess(
             doc,
             scorer,
-            winner.score,  # type: ignore[arg-type]
+            score,  # type: ignore[arg-type]
             text_boxes=_text_boxes(pre.reference, profile),
             min_spacing_px=min_spacing_px,
             simplify_enabled=options.simplify,
@@ -197,7 +214,23 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
         score_version=SCORE_VERSION,
         timings_ms=timer.marks,
         outputs=emitted.outputs,
+        refinements=refinements,
     )
+
+
+def _should_refine(options: Options) -> bool:
+    """Opt-in only (§1: "an optimisation, not a foundation").
+
+    Refinement costs another trace and two more renders per region — about
+    1.5 s on the `max` tier — and on the current corpus it earns roughly
+    +0.001 fidelity. That is not a trade worth making on a customer's
+    behalf, so it is off until a real corpus says otherwise.
+
+    `forced_params` is the advanced panel asking for one specific trace
+    (§7.6); refining it would mean returning something the user did not
+    ask for.
+    """
+    return options.refine and options.forced_params is None
 
 
 def _min_spacing_px(doc: SvgDoc, profile: ImageProfile, options: Options) -> float:

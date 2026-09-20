@@ -11,7 +11,11 @@ What exists today, and how the pieces that do not yet exist attach to it.
 | 2 | Service: `/v1`, three queue lanes, presigned uploads, SSRF rules, retention | **Built.** Runs on SQLite + local storage for dev and tests; Postgres + R2 + Redis in production. |
 | 3 | Web app + SEO foundation | **Built.** Converter, tile preview, slider, advanced panel, batch grid, `/png-to-svg`, `/convert-for-cricut`, sitemap, JSON-LD, Lighthouse budget. Auth is stubbed — see below. |
 | 4 | Money | **Built, unexercised.** Auth, grants, ledger, unlock, checkout, the billing portal and the price list all work and are tested. Stripe itself has never run against a real account — that needs keys. §10's pricing decision is **resolved** (below). |
-| 5–8 | Batch polish, API product, SEO expansion, refinement | Batch and webhooks are built; the rest not started. |
+| 5 | Batch + formats | **Built.** 500-file batches as per-file tasks, zip, signed webhooks, DXF/EPS/PDF with real units. |
+| 6 | API product | **Built.** Keys, per-key rate limits, billable overage with a hard cap, public docs at `/api`, generated wire types. |
+| 7 | SEO expansion | **Built**, except the Vectorizer.AI comparison page, which §9 allows only if the blind A/B supports an honest one. Six intent pages, three free tools, three guides. |
+| 8 | Refinement loop | **Localised refinement is built and off by default** — measured, not assumed (below). Preset tuning from production data needs production data. |
+| — | Deployment | Dockerfiles, four `fly.toml` files and the R2 lifecycle rules exist and are tested for their invariants. Never run against a real Fly account. |
 
 ## The engine (`/packages/engine`)
 
@@ -279,6 +283,35 @@ are immutable in Stripe: changing $12 to $9 means a new price and a
 repoint, and doing that by hand across test and live is how the two
 environments drift apart. It never edits or archives an existing price —
 that has billing consequences for existing subscribers.
+
+## Localised refinement, and why it is off
+
+§1 allows exactly one loop besides the outer parameter search: when scoring
+shows the error concentrated in one region, re-trace *that region* from the
+original pixels and composite it back. `engine/refine.py` implements it,
+with three rules that make it safe rather than just slow —
+the region is re-traced from the reference and never from a trace, every
+composite is re-scored and kept only if it beats what it replaced, and no
+clip paths are involved (a clip renders correctly in a browser and exports
+as unclipped geometry into DXF, which is a wrong cut file).
+
+Then it was measured, and the measurement is why it ships disabled:
+
+| Recipe | Fidelity | Nodes | Verdict |
+|---|---|---|---|
+| Re-trace the region with the detail knobs turned up, at 2× resolution | +0.0007 | **2.0×** | Rejected by `total`, correctly |
+| Re-trace at 2× resolution with the *same* parameters | +0.0011 | 1.10× | Gains ~0.0003 `total` — below the gate |
+| Re-trace at the same resolution | +0.0000 | 1.00× | Nothing happens |
+
+So resolution does the work and the detail knobs actively hurt — the
+obvious intuition is backwards. Even the best recipe earns about +0.001
+fidelity for 10% more nodes and roughly 1.4 s, which is not a trade to make
+on a customer's behalf. `Options.refine` is off by default and is not
+exposed in the public API.
+
+What would change the verdict is a real corpus: this one is synthetic and
+has no genuine small type, which is the case §1 names.
+`benchmarks/refine_report.py` reproduces the table above on any corpus.
 
 ## What is unexercised
 

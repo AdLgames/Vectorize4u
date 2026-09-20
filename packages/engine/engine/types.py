@@ -212,6 +212,12 @@ class Options:
     formats: tuple[str, ...] = ("svg",)
     # Escape hatch for the advanced panel (§7.6): a single forced candidate.
     forced_params: Params | None = None
+    # Localised refinement (§1, Phase 8). Off by default, and deliberately
+    # not exposed in the public API yet: on the current corpus it earns
+    # about +0.001 fidelity for ~10% more nodes, which is not enough to
+    # spend a customer's seconds on. `benchmarks/refine_report.py` is what
+    # would change that verdict on a real corpus.
+    refine: bool = False
 
 
 @dataclass
@@ -227,3 +233,7 @@ class EngineResult:
     score_version: str
     timings_ms: dict[str, int]
     outputs: dict[str, bytes] = field(default_factory=dict)
+    # How many regions localised refinement re-traced and kept (§1). Zero on
+    # every tier but `max`, and zero there too unless a re-trace scored
+    # better than what it replaced.
+    refinements: int = 0
