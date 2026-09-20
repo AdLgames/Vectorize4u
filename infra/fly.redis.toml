@@ -32,14 +32,18 @@ primary_region = "lhr"
 [[mounts]]
   source = "redis_data"
   destination = "/data"
+  processes = ["app"]
 
-[[services]]
-  internal_port = 6379
-  protocol = "tcp"
-  # No public ports: the workers reach this over .internal only.
-  auto_stop_machines = false
-  auto_start_machines = false
-  min_machines_running = 1
+# No [[services]] at all, deliberately. A service on Fly is a *published*
+# port — it must expose at least one and belong to a process group, and
+# the config is rejected without both. This Redis is not published: every
+# machine on the organisation's private network can already reach it at
+# vectorize4u-redis.internal:6379 over 6PN, which is the only access it
+# should ever have.
+#
+# The side effect is the one we want: auto-stop is driven by service
+# traffic, so an app with no services does not stop. A broker that goes to
+# sleep is the failure this whole file exists to avoid.
 
 [[vm]]
   size = "shared-cpu-1x"
