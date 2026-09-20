@@ -20,6 +20,7 @@ numbers came out as and what they imply.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -65,13 +66,18 @@ def ink_mask(rgba: np.ndarray, *, threshold: int = 128) -> np.ndarray:
 def _skeleton(mask: np.ndarray) -> np.ndarray:
     from skimage.morphology import skeletonize
 
-    return skeletonize(mask.astype(bool)).astype(np.uint8)
+    # scikit-image ships no annotations for this, and whether mypy sees it
+    # as untyped depends on the version installed — which is how this
+    # passed here and failed in CI. Going through `cast` states the
+    # boundary once and holds for both.
+    skeleton = cast(Any, skeletonize)(mask.astype(bool))
+    return np.asarray(skeleton, dtype=np.uint8)
 
 
 def _neighbour_count(skel: np.ndarray) -> np.ndarray:
     kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=np.uint8)
-    counts: np.ndarray = cv2.filter2D(skel, -1, kernel, borderType=cv2.BORDER_CONSTANT)
-    return counts * skel
+    counts = np.asarray(cv2.filter2D(skel, -1, kernel, borderType=cv2.BORDER_CONSTANT))
+    return np.asarray(counts * skel)
 
 
 def _walk(skel: np.ndarray) -> list[list[tuple[int, int]]]:

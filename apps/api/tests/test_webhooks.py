@@ -109,6 +109,14 @@ def test_delivery_refuses_an_internal_destination(url):
 
 
 def test_the_signature_covers_timestamp_and_body(monkeypatch):
+    """Exercised through a real httpx client with a mock transport.
+
+    The previous version of this test replaced `httpx.post` with a stub
+    that accepted anything, and so it happily passed while the real call
+    raised `TypeError: post() got an unexpected keyword argument
+    'extensions'` — every delivery failing, and failing in the shape of a
+    customer endpoint being down. Swap the transport, not the call.
+    """
     import hashlib
     import hmac
     import json
@@ -118,30 +126,58 @@ def test_the_signature_covers_timestamp_and_body(monkeypatch):
 
     from app.config import settings
 
-    captured: dict = {}
+    seen: dict = {}
 
-    def fake_post(url, **kwargs):
-        captured["url"] = url
-        captured["headers"] = kwargs["headers"]
-        captured["content"] = kwargs["content"]
-        return httpx.Response(200, request=httpx.Request("POST", url))
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["headers"] = request.headers
+        seen["content"] = request.content
+        seen["sni"] = request.extensions.get("sni_hostname")
+        return httpx.Response(200)
 
     monkeypatch.setattr(tasks, "_resolve_callback", lambda url: ("93.184.216.34", "example.com"))
-    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(
+        tasks,
+        "_webhook_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False),
+    )
 
     payload = {"type": "job.complete", "job_id": "job_1"}
     result = tasks.deliver_webhook_inline("https://example.com/hook", payload)
     assert result["status"] == "delivered"
 
-    # Connected to the address we checked, with the real host in the header.
-    assert captured["url"] == "https://93.184.216.34/hook"
-    assert captured["headers"]["Host"] == "example.com"
+    # Connected to the address we checked, with the real host in the
+    # header and the real hostname offered for TLS.
+    assert seen["url"] == "https://93.184.216.34/hook"
+    assert seen["headers"]["Host"] == "example.com"
+    assert seen["sni"] == "example.com"
 
-    timestamp = captured["headers"]["X-Vectorize-Timestamp"]
+    timestamp = seen["headers"]["X-Vectorize-Timestamp"]
     expected = hmac.new(
         settings().webhook_signing_secret.encode(),
-        timestamp.encode() + b"." + captured["content"],
+        timestamp.encode() + b"." + seen["content"],
         hashlib.sha256,
     ).hexdigest()
-    assert captured["headers"]["X-Vectorize-Signature"] == f"sha256={expected}"
-    assert json.loads(captured["content"]) == payload
+    assert seen["headers"]["X-Vectorize-Signature"] == f"sha256={expected}"
+    assert json.loads(seen["content"]) == payload
+
+
+def test_a_delivery_that_raises_is_retried_not_swallowed():
+    """The bug this file now guards: a TypeError in our own code came back
+    as a delivery failure, which is retried forever and looks like the
+    customer's fault."""
+    import httpx
+    from worker import tasks
+    from worker.tasks import WebhookDeliveryFailed
+
+    def explode(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    original = tasks._webhook_client
+    tasks._webhook_client = lambda: httpx.Client(transport=httpx.MockTransport(explode))
+    tasks._resolve_callback = lambda url: ("93.184.216.34", "example.com")
+    try:
+        with pytest.raises(WebhookDeliveryFailed):
+            tasks.deliver_webhook_inline("https://example.com/hook", {"type": "job.complete"})
+    finally:
+        tasks._webhook_client = original
