@@ -56,6 +56,9 @@ check: lint typecheck test test-api ## everything CI runs except bench
 # silently started the API with the worker disabled and dev sign-in off.
 api: ## run the API locally with the worker inline (no Redis, no Postgres)
 	cd apps/api && \
+	  VEC_ENVIRONMENT=dev VEC_DATABASE_URL="sqlite+pysqlite:///./dev.db" \
+	  ../../$(PY) scripts/dev_db.py
+	cd apps/api && \
 	  VEC_ENVIRONMENT=dev VEC_INLINE_WORKER=1 VEC_DEV_AUTH_ENABLED=1 \
 	  VEC_DATABASE_URL="sqlite+pysqlite:///./dev.db" \
 	  VEC_STORAGE_BACKEND=local VEC_STORAGE_LOCAL_DIR=./.storage \
@@ -72,7 +75,8 @@ web: ## run the Next.js dev server against a local API (dev sign-in on)
 
 e2e: ## drive the app in a real browser (needs `make api` + `make web`)
 	cd apps/web && npm install --no-save playwright \
-	  && node e2e/smoke.mjs && node e2e/signed-in.mjs && node e2e/checkout.mjs
+	  && node e2e/smoke.mjs && node e2e/signed-in.mjs && node e2e/checkout.mjs \
+	  && node e2e/intent-pages.mjs
 
 stripe-bootstrap: ## create this product's Stripe products and prices (idempotent)
 	cd apps/api && ../../$(PY) scripts/bootstrap_stripe.py
@@ -80,8 +84,8 @@ stripe-bootstrap: ## create this product's Stripe products and prices (idempoten
 web-build: ## production build of the web app
 	cd apps/web && npm run build
 
-web-lint: ## eslint + tsc for the web app
-	cd apps/web && npm run lint && npm run typecheck
+web-lint: ## eslint + tsc + the doorway-page guard for the web app
+	cd apps/web && npm run lint && npm run typecheck && npm run check-seo
 
 bench: ## per-category means + regression gate against benchmarks/baseline.json
 	$(PY) benchmarks/run.py

@@ -12,6 +12,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE}/`, lastModified: now, changeFrequency: "weekly", priority: 1 },
     { url: `${SITE}/convert`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${SITE}/png-to-svg`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${SITE}/jpg-to-svg`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${SITE}/logo-to-vector`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${SITE}/image-to-dxf`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    {
+      url: `${SITE}/vector-art-for-embroidery-digitizing`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
     {
       url: `${SITE}/convert-for-cricut`,
       lastModified: now,

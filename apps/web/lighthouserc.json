@@ -5,7 +5,9 @@
       "url": [
         "http://127.0.0.1:3100/",
         "http://127.0.0.1:3100/png-to-svg",
-        "http://127.0.0.1:3100/convert-for-cricut"
+        "http://127.0.0.1:3100/convert-for-cricut",
+        "http://127.0.0.1:3100/image-to-dxf",
+        "http://127.0.0.1:3100/api"
       ],
       "numberOfRuns": 3,
       "settings": {

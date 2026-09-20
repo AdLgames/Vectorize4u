@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Sans } from "next/font/google";
 import AuthProvider from "@/components/AuthProvider";
+import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
 
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
   },
   description:
     "Convert PNG and JPEG artwork to clean SVG, PDF, EPS and DXF. Batch up to 500 files, set the exact size it should cut at, and see a quality score before you pay.",
+  alternates: { canonical: "/" },
   openGraph: { type: "website", siteName: "Vectorize4u", images: ["/og.svg"] },
   robots: { index: true, follow: true },
 };
@@ -57,24 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </main>
         </AuthProvider>
-        <footer
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            padding: "var(--space-6) 20px",
-            display: "flex",
-            gap: 16,
-            flexWrap: "wrap",
-            fontSize: "var(--text-xs)",
-            color: "var(--ink-400)",
-          }}
-        >
-          <span>© 2026 Vectorize4u</span>
-          <span>
-            We delete your files after 24 hours on free, 30 days on paid plans. They are never
-            used to train anything.
-          </span>
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

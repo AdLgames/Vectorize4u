@@ -37,7 +37,10 @@
   --magenta: #c01e62;
   --magenta-soft: #fce8f0;
   --magenta-border: #ebb3cb;
-  --amber: #b57a00;
+  /* #b57a00 on --amber-soft is 3.32:1 — fine for the large score numeral,
+     not fine for a bold 16px notice title. Darkened to 5.2:1 so one token
+     can carry both. */
+  --amber: #8a5d00;
   --amber-soft: #fdf3df;
   --amber-border: #e8ce8f;
   --green: #1e7a54;

@@ -36,6 +36,8 @@ import { Button, Card, Muted, Notice } from "./ui";
 export type ConverterProps = {
   cutIntent?: boolean;
   defaultFormats?: NonNullable<JobOptions["format"]>;
+  /** An intent page starts from the settings that intent usually needs. */
+  defaultOptions?: JobOptions;
   compact?: boolean;
 };
 
@@ -44,6 +46,7 @@ type Phase = "idle" | "uploading" | "tracing" | "ready" | "error";
 export default function Converter({
   cutIntent = false,
   defaultFormats = ["svg"],
+  defaultOptions,
   compact = false,
 }: ConverterProps) {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -66,6 +69,7 @@ export default function Converter({
     units: "mm",
     output_width: null,
     quality_tier: "standard",
+    ...defaultOptions,
   });
   const inputRef = useRef<HTMLInputElement | null>(null);
 
