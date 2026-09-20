@@ -72,6 +72,38 @@ export default function PngToSvgPage() {
         </p>
       </section>
 
+      <section style={{ maxWidth: "68ch", display: "grid", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-h2)", margin: 0 }}>Transparency, and the dark halo</h2>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          PNG is the format people reach for because it keeps transparency, and it is also
+          where a specific bug lives. A PNG can store its colours either straight or
+          premultiplied by the alpha channel, and the file does not always say which.
+          Software that assumes the wrong one darkens every semi-transparent pixel — which
+          is why a logo with a soft edge so often arrives with a grey outline nobody asked
+          for.
+        </p>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          We detect which kind of alpha a file has rather than assuming, and correct only
+          the files that need it. A dark logo that was always meant to be dark is left
+          exactly as it was.
+        </p>
+      </section>
+
+      <section style={{ maxWidth: "68ch", display: "grid", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-h2)", margin: 0 }}>When SVG is the wrong answer</h2>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          Vector suits flat colour, hard edges and artwork that has to scale: logos, icons,
+          line art, anything being cut or engraved. A photograph traced to SVG becomes
+          hundreds of colour regions and a file far larger than the PNG you started with,
+          and it will not look like a photograph any more.
+        </p>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          If you simply need a smaller or larger PNG, resizing it is the better tool. If you
+          need the poster-style look that tracing a photo gives, the preview will show you
+          exactly that before you decide — which is the point of previewing first.
+        </p>
+      </section>
+
       <Faq items={FAQ} />
     </div>
   );

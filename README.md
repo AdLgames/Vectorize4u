@@ -72,17 +72,39 @@ tune and debug it.
 | Deleted jobs are unreachable immediately | `app/retention.py` | `test_delete_purges_immediately` |
 | A session cannot be forged, replayed or downgraded | `app/auth.py` | 17 cases in `test_auth_supabase.py` |
 | Starting a checkout grants nothing; the webhook does | `app/routers/checkout.py` | `test_checkout_grants_nothing_on_its_own` |
+| A day that costs 15% more than the week before it gets noticed | daily check on the batch lane, `app/costs.py` | `test_cost_alerts.py` |
 | Usage billing cannot exceed 3× the plan price | `app/jobs.py: assert_can_afford`, `app/credits.py` | `test_the_cap_refuses_work_before_doing_it` |
 | A callback cannot be aimed at an internal service | re-validated at delivery in `worker/tasks.py` | `test_delivery_refuses_an_internal_destination` |
 | The published API docs match the served schema | `packages/shared/generate.py`, docs as data | `test_public_docs.py` |
+| No two landing pages are the same page with a keyword swapped | copy written per page | `apps/web/scripts/check-seo-pages.mjs`, in CI |
 | LCP < 2.0s, CLS < 0.05, Lighthouse ≥ 95 | `lighthouserc.json` | measured: 99/100/96/100, LCP 1.9s, CLS 0 |
 
 ## What is not built
 
-Phase 7's SEO expansion beyond the three pages that ship today, and the
-Phase 8 refinement loop. Phase 6 is done: keys, per-key rate limits,
-billable overage with a hard cap, job and batch webhooks, public docs at
-`/api`, and generated wire types in `packages/shared`.
+Two things, both deliberate:
+
+- **The comparison page against Vectorizer.AI.** §9 allows it **only if**
+  the blind A/B supports an honest one, and `benchmarks/ab/votes.json` is
+  not in the repository, so there is nothing to write from yet.
+- **Centerline tracing**, evaluated in Phase 8 and not adopted. The
+  prototype works and the licensing objection in §0 turns out not to
+  apply; the cost is a second kind of geometry through post-processing,
+  scoring and DXF export. See `docs/architecture.md`.
+
+Phases 0–8 are otherwise built. Phase 8's localised refinement ships
+disabled on measured grounds rather than unbuilt ones — `make
+refine-report` reproduces the numbers.
+
+The deployment (`/infra`) exists — two images, four Fly apps, the R2
+lifecycle backstop — and has **never been run against a real Fly account**.
+`docs/first-deploy.md` walks it step by step, and it does not need Stripe:
+`VEC_PAYMENTS_ENABLED=0` runs a staging deployment that converts images
+but cannot sell them. Stripe itself still needs your keys.
+
+§13's two load items **are** verified, against a real broker and real
+Postgres: `make load-test` (a 500-file batch must not raise preview p95)
+and `make soak` (worker RSS must stay flat). Both pass; see
+`docs/architecture.md` for the numbers and the two bugs they found.
 
 One step remains before money can move: **Stripe has never run against a
 real account.** Checkout, the billing portal and the price list are built

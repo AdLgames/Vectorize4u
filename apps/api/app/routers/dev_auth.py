@@ -92,6 +92,10 @@ def dev_session(
         cfg.jwt_dev_secret,
         algorithm="HS256",
     )
+    # Committed before the token leaves, not in the request teardown: the
+    # caller is about to authenticate with it, and an account that does
+    # not exist yet fails in ways that look like an auth bug.
+    session.commit()
     log.warning("issued a development session for %s — this is not real auth", body.email)
     return DevSessionResponse(
         access_token=token, email=body.email, user_id=user_id, expires_in=TOKEN_TTL_S

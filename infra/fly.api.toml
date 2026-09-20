@@ -1,0 +1,49 @@
+# The API. Stateless, public, and the only process that writes to the
+# database — so it is also the only one that runs migrations.
+#
+#   fly deploy -c infra/fly.api.toml
+app = "vectorize-api"
+primary_region = "lhr"
+
+# No [build] section on purpose. The image needs the *repository root* as
+# its build context (it copies packages/engine as well as apps/api), and
+# whether a relative dockerfile path resolves against this file or against
+# the working directory is exactly the kind of thing that differs between
+# flyctl versions. `make deploy-api` passes both explicitly instead.
+
+[deploy]
+  # Alembic is the only place schema changes happen (§11), and it runs once
+  # per deploy rather than per machine: `release_command` runs in its own
+  # one-off machine before any new machine takes traffic.
+  release_command = "python -m alembic upgrade head"
+  strategy = "rolling"
+
+[env]
+  VEC_ENVIRONMENT = "prod"
+  VEC_STORAGE_BACKEND = "r2"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Never scale the API to zero: a cold start inside the 8-second hold
+  # window turns a synchronous conversion into a timeout.
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 60
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"

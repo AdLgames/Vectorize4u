@@ -7,7 +7,8 @@ ENGINE := packages/engine
 
 .PHONY: help setup setup-service fixtures test test-api lint typecheck check bench \
         bench-baseline ab ab-report kit api worker web web-build web-lint e2e \
-        stripe-bootstrap types clean
+        stripe-bootstrap types images deploy-api deploy-workers r2-lifecycle \
+        calibrate refine-report centerline-report load-test soak clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -56,6 +57,9 @@ check: lint typecheck test test-api ## everything CI runs except bench
 # silently started the API with the worker disabled and dev sign-in off.
 api: ## run the API locally with the worker inline (no Redis, no Postgres)
 	cd apps/api && \
+	  VEC_ENVIRONMENT=dev VEC_DATABASE_URL="sqlite+pysqlite:///./dev.db" \
+	  ../../$(PY) scripts/dev_db.py
+	cd apps/api && \
 	  VEC_ENVIRONMENT=dev VEC_INLINE_WORKER=1 VEC_DEV_AUTH_ENABLED=1 \
 	  VEC_DATABASE_URL="sqlite+pysqlite:///./dev.db" \
 	  VEC_STORAGE_BACKEND=local VEC_STORAGE_LOCAL_DIR=./.storage \
@@ -72,7 +76,23 @@ web: ## run the Next.js dev server against a local API (dev sign-in on)
 
 e2e: ## drive the app in a real browser (needs `make api` + `make web`)
 	cd apps/web && npm install --no-save playwright \
-	  && node e2e/smoke.mjs && node e2e/signed-in.mjs && node e2e/checkout.mjs
+	  && node e2e/smoke.mjs && node e2e/signed-in.mjs && node e2e/checkout.mjs \
+	  && node e2e/intent-pages.mjs && node e2e/tools.mjs
+
+images: ## build both production images locally (the build context is the repo root)
+	docker build -f infra/Dockerfile.api -t vectorize-api .
+	docker build -f infra/Dockerfile.worker -t vectorize-worker .
+
+deploy-api: ## fly deploy the API (runs alembic upgrade head as its release command)
+	fly deploy --config infra/fly.api.toml --dockerfile infra/Dockerfile.api .
+
+deploy-workers: ## fly deploy all three worker lanes (§4.2)
+	fly deploy --config infra/fly.worker-preview.toml --dockerfile infra/Dockerfile.worker .
+	fly deploy --config infra/fly.worker-sync.toml --dockerfile infra/Dockerfile.worker .
+	fly deploy --config infra/fly.worker-batch.toml --dockerfile infra/Dockerfile.worker .
+
+r2-lifecycle: ## check the retention backstop on the bucket (--apply to write it)
+	cd apps/api && ../../$(PY) ../../infra/r2_lifecycle.py --check
 
 stripe-bootstrap: ## create this product's Stripe products and prices (idempotent)
 	cd apps/api && ../../$(PY) scripts/bootstrap_stripe.py
@@ -80,11 +100,26 @@ stripe-bootstrap: ## create this product's Stripe products and prices (idempoten
 web-build: ## production build of the web app
 	cd apps/web && npm run build
 
-web-lint: ## eslint + tsc for the web app
-	cd apps/web && npm run lint && npm run typecheck
+web-lint: ## eslint + tsc + the doorway-page guard for the web app
+	cd apps/web && npm run lint && npm run typecheck && npm run check-seo
 
 bench: ## per-category means + regression gate against benchmarks/baseline.json
 	$(PY) benchmarks/run.py
+
+load-test: ## §13: a 500-file batch must not raise preview p95 (see benchmarks/load/README.md)
+	$(PY) benchmarks/load/load_test.py --files 500
+
+soak: ## §13: worker RSS must stay flat across a long run
+	$(PY) benchmarks/load/soak.py --jobs 1500
+
+calibrate: ## recompute k_class from evidence (dry run; --write to apply)
+	$(PY) benchmarks/calibrate.py
+
+refine-report: ## does localised refinement earn its nodes? (§1, Phase 8)
+	$(PY) benchmarks/refine_report.py
+
+centerline-report: ## evaluate the centerline experiment (§0 non-goals, Phase 8)
+	$(PY) benchmarks/centerline_report.py
 
 bench-baseline: ## regenerate baseline.json (same PR as any score_version bump)
 	$(PY) benchmarks/run.py --write-baseline

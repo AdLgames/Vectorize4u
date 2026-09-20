@@ -1,0 +1,16 @@
+# Build context hygiene. Without this the context includes .venv, node_modules
+# and every benchmark output, which is gigabytes for a few megabytes of code.
+.git
+.venv
+node_modules
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+apps/web/.next
+apps/api/.storage
+apps/api/dev.db
+benchmarks/out
+benchmarks/ab/out
+benchmarks/acceptance/out

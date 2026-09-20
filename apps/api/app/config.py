@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # seconds, so ip_hash is an HMAC under a daily-rotating secret.
     ip_hash_secret: str = "dev-only-not-a-secret"
 
+    # A staging deployment that can convert images but not sell them is a
+    # useful thing to have before Stripe exists. Refused in prod below: a
+    # production site that silently cannot take money is not a mode
+    # anybody wants to discover by accident.
+    payments_enabled: bool = True
+
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     # Price ids per plan, e.g. {"pack": "price_...", "starter": "price_..."}.
@@ -99,6 +105,17 @@ class Settings(BaseSettings):
     webhook_signing_secret: str = "dev-only-not-a-secret"
 
     free_monthly_downloads: int = 3
+
+    # §8 cost guardrail. An 8-candidate search's failure mode is a large
+    # CPU bill, and the first sign is a day that does not look like the
+    # week before it. Empty means log-only, which is the right default for
+    # development and the wrong one for production.
+    alert_webhook_url: str = ""
+    cost_alert_deviation: float = 0.15
+    cost_alert_window_days: int = 7
+    # Below this much compute in a day, percentages are meaningless — two
+    # jobs against a baseline of one is a 100% deviation and nothing else.
+    cost_alert_floor_ms: int = 60_000
 
     @property
     def is_production(self) -> bool:
@@ -140,6 +157,14 @@ class Settings(BaseSettings):
             )
         if self.dev_auth_enabled:
             problems.append("VEC_DEV_AUTH_ENABLED is on — it is a total auth bypass")
+        if not self.payments_enabled:
+            if self.environment == "prod":
+                problems.append(
+                    "VEC_PAYMENTS_ENABLED is off — allowed in staging, never in production"
+                )
+            if problems:
+                raise RuntimeError("unsafe configuration: " + "; ".join(problems))
+            return
         if not self.stripe_webhook_secret:
             problems.append("VEC_STRIPE_WEBHOOK_SECRET is not configured")
         if not self.stripe_secret_key:

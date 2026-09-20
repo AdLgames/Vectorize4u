@@ -11,7 +11,11 @@ What exists today, and how the pieces that do not yet exist attach to it.
 | 2 | Service: `/v1`, three queue lanes, presigned uploads, SSRF rules, retention | **Built.** Runs on SQLite + local storage for dev and tests; Postgres + R2 + Redis in production. |
 | 3 | Web app + SEO foundation | **Built.** Converter, tile preview, slider, advanced panel, batch grid, `/png-to-svg`, `/convert-for-cricut`, sitemap, JSON-LD, Lighthouse budget. Auth is stubbed — see below. |
 | 4 | Money | **Built, unexercised.** Auth, grants, ledger, unlock, checkout, the billing portal and the price list all work and are tested. Stripe itself has never run against a real account — that needs keys. §10's pricing decision is **resolved** (below). |
-| 5–8 | Batch polish, API product, SEO expansion, refinement | Batch and webhooks are built; the rest not started. |
+| 5 | Batch + formats | **Built.** 500-file batches as per-file tasks, zip, signed webhooks, DXF/EPS/PDF with real units. |
+| 6 | API product | **Built.** Keys, per-key rate limits, billable overage with a hard cap, public docs at `/api`, generated wire types. |
+| 7 | SEO expansion | **Built**, except the Vectorizer.AI comparison page, which §9 allows only if the blind A/B supports an honest one. Six intent pages, three free tools, three guides. |
+| 8 | Refinement loop | **Localised refinement is built and off by default** — measured, not assumed (below). Preset tuning from production data needs production data. |
+| — | Deployment | Dockerfiles, four `fly.toml` files and the R2 lifecycle rules exist and are tested for their invariants. Never run against a real Fly account. |
 
 ## The engine (`/packages/engine`)
 
@@ -279,6 +283,149 @@ are immutable in Stripe: changing $12 to $9 means a new price and a
 repoint, and doing that by hand across test and live is how the two
 environments drift apart. It never edits or archives an existing price —
 that has billing consequences for existing subscribers.
+
+## Localised refinement, and why it is off
+
+§1 allows exactly one loop besides the outer parameter search: when scoring
+shows the error concentrated in one region, re-trace *that region* from the
+original pixels and composite it back. `engine/refine.py` implements it,
+with three rules that make it safe rather than just slow —
+the region is re-traced from the reference and never from a trace, every
+composite is re-scored and kept only if it beats what it replaced, and no
+clip paths are involved (a clip renders correctly in a browser and exports
+as unclipped geometry into DXF, which is a wrong cut file).
+
+Then it was measured, and the measurement is why it ships disabled:
+
+| Recipe | Fidelity | Nodes | Verdict |
+|---|---|---|---|
+| Re-trace the region with the detail knobs turned up, at 2× resolution | +0.0007 | **2.0×** | Rejected by `total`, correctly |
+| Re-trace at 2× resolution with the *same* parameters | +0.0011 | 1.10× | Gains ~0.0003 `total` — below the gate |
+| Re-trace at the same resolution | +0.0000 | 1.00× | Nothing happens |
+
+So resolution does the work and the detail knobs actively hurt — the
+obvious intuition is backwards. Even the best recipe earns about +0.001
+fidelity for 10% more nodes and roughly 1.4 s, which is not a trade to make
+on a customer's behalf. `Options.refine` is off by default and is not
+exposed in the public API.
+
+What would change the verdict is a real corpus: this one is synthetic and
+has no genuine small type, which is the case §1 names.
+`benchmarks/refine_report.py` reproduces the table above on any corpus.
+
+## Calibration: what the corpus cannot tell us
+
+`node_baseline = k_class x edge_pixel_count / 1000` decides what counts as
+too many points, and `engine/calibration.json` still carries Phase 1
+bootstrap values — someone's estimate. `make calibrate` measures what a
+selected trace actually costs per class and reports what the numbers
+*would* be. On the current corpus it declines to move any of them, and the
+reason is the useful part:
+
+| class | n | current k | measured median | spread |
+|---|---|---|---|---|
+| LOGO_FLAT | 7 | 2.00 | 103.51 | 227.27 |
+| every other class | ≤ 1 | — | — | — |
+
+Seven samples whose spread is twice their median is not a measurement. The
+range inside LOGO_FLAT alone runs from 4.7 (a clean flat logo) to 261 (the
+same logo at 1/4 the resolution, where every edge pixel buys far more
+nodes), so the median describes neither. Writing 103 would push the clean
+logos below their own baseline, where the penalty clamps and stops
+discriminating between candidates at all — strictly worse than the
+bootstrap value it replaced.
+
+So `calibrate.py` refuses to write a class whose samples disagree with each
+other, and the real fix is §3.9's 60–100 hand-labelled images. The same
+script reads production jobs with `--from db`, which is what
+`job_candidates` and `jobs.profile` are persisted for (§5): calibration can
+be redone from months of real work without having kept a single pixel.
+
+## Centerline tracing: evaluated, not adopted
+
+§0 defers single-line tracing to "Phase 8+" and names the obstacle as
+licensing — autotrace is GPL. That framing does not survive contact: we
+already ship potrace, which is GPLv2, as a subprocess that is never linked
+(docs/licensing.md), so the same arrangement was always available. And it
+turns out not to be needed. `engine/centerline.py` gets a usable centerline
+out of dependencies we already have — scikit-image's skeletonize (BSD) plus
+the curve fitter written for post-processing.
+
+What it produces, from `make centerline-report`:
+
+| fixture | outline nodes | centerline nodes | strokes | width/side |
+|---|---|---|---|---|
+| line_art | 205 | 165 | 44 | 0.009 |
+| sketch | 709 | 382 | 187 | 0.003 |
+| screenshot | 3444 | 513 | 233 | 0.026 |
+| logo_flat | 27 | 25 | 5 | 0.177 |
+| cmyk_jpeg (a filled logo) | 1168 | 24 | 5 | 0.178 |
+
+Three things came out of this that were not obvious beforehand:
+
+1. **Knowing when to use it is the easy part, but not by the obvious
+   statistic.** Stroke width does not travel between image sizes, and
+   "how much ink do the strokes explain" does not separate the cases at all
+   — a filled letter's skeleton is long and wide, so it explains all of its
+   own ink. What separates them is *mean ink width relative to the shorter
+   side of the image*: 0.003–0.026 for line art, sketches and screenshots,
+   0.08–1.0 for filled artwork. An order of magnitude, with a gap.
+2. **The scorer cannot choose between them.** Rendered and scored against
+   the reference, the centerline of `line_art` gets 0.806 where the outline
+   trace gets 0.906 — it is *supposed* to lose, because a uniform-width
+   stroke is not the same shape as the outline. Centerline is a different
+   intent (what the plotter draws), not a better trace, so it has to be an
+   explicit request, never a scored choice.
+3. **The cost is downstream, not in the tracer.** `SvgDoc` models filled
+   paths because that is what both tracers emit and what sliver removal,
+   node spacing, DXF export and the scorer all assume. Open stroked paths
+   need their own route through every one of those, and that — not the
+   licence and not the algorithm — is the work.
+
+So: viable, cheap to prototype, and deliberately not wired into the
+pipeline. It would earn its place alongside a plotter/engraver corpus to
+test against, which we do not have.
+
+## Load verification, and the bug it found
+
+§13 asks for two things no unit test can answer, because they are claims
+about a broker and three pools under contention: a 500-file batch must run
+to completion without raising p95 on `queue_preview`, and worker RSS must
+stay flat across a long run. `benchmarks/load/` runs the real stack —
+Redis, Postgres, uvicorn, two Celery pools on separate queues and separate
+cores — and both now pass:
+
+| | idle | under a 500-file batch |
+|---|---|---|
+| preview p50 | 0.436 s | 0.441 s |
+| preview p95 | 0.439 s | 0.449 s |
+| `/health` p95 (control) | 0.002 s | 0.003 s |
+
+500 files, 0 failed, 133 s (3.8/s). Soak: 1,500 jobs, preview RSS flat at
+252 MB, batch RSS p90 428 → 449 MB with a 645 MB peak.
+
+**The first run never got that far.** The worker connected, subscribed to
+its queues, reported itself healthy, and then raised `KeyError:
+worker.tasks.vectorize_job` on the first task — `worker.tasks` was never
+imported, so nothing was registered. Every test in this repository
+dispatches inline, which imports that module directly and hides the
+problem completely. In production this is a worker that looks up and
+processes nothing.
+
+The second run found a second one: a 404 for an upload that was sitting in
+the database. `get_session` commits in its teardown, which FastAPI runs
+*after* the response has gone to the transport, so a client that
+immediately uses the `upload_id` it was just handed can beat its own row
+into the database. Endpoints that hand out an identifier now commit before
+they answer, and `tests/test_commit_boundaries.py` removes the safety net
+that hid it — it injects a session that never commits in teardown, so
+anything relying on teardown fails.
+
+Two measurement traps are written up in `benchmarks/load/README.md`, both
+of which this test fell into first and both of which would have been
+reported as "batch work is starving previews": comparing a 10-preview idle
+phase against a 230-preview loaded one when a child recycles every 25
+tasks, and sampling a prefork sawtooth once per chunk.
 
 ## What is unexercised
 

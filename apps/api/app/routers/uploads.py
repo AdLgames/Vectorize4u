@@ -62,7 +62,12 @@ def create_upload(
             declared_bytes=body.content_length,
         )
     )
-    session.flush()
+    # Committed here, not left to the dependency's teardown. The teardown
+    # runs *after* the response is handed to the transport, so a client
+    # that immediately uses this upload_id can beat its own row into the
+    # database and get a 404 for an upload it correctly created. That is
+    # exactly what the §13 load run does, and what it caught.
+    session.commit()
 
     return UploadResponse(
         upload_id=upload_id,

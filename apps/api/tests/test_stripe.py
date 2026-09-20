@@ -188,3 +188,59 @@ def test_full_lifecycle_reconciles_with_zero_drift(client, customer):
     with session_factory()() as s:
         # Balance is never negative, whatever order the events arrived in.
         assert credits.balance(s, customer.id) >= 0
+
+
+# --- staging without Stripe -------------------------------------------
+
+
+def _staging_settings(**overrides):
+    """A production-shaped configuration, minus whatever the test removes."""
+    from app.config import Settings
+
+    base = {
+        "environment": "staging",
+        "storage_backend": "r2",
+        "r2_bucket": "b",
+        "r2_endpoint_url": "https://example.r2.cloudflarestorage.com",
+        "ip_hash_secret": "x" * 40,
+        "webhook_signing_secret": "y" * 40,
+        "jwt_dev_secret": "z" * 40,
+        "supabase_url": "https://project.supabase.co",
+        "checkout_success_url": "https://app.example.com/ok",
+        "checkout_cancel_url": "https://app.example.com/no",
+        "billing_portal_return_url": "https://app.example.com/account",
+    }
+    base.update(overrides)
+    return Settings(**base)
+
+
+def test_staging_can_run_without_stripe_at_all():
+    """A deployment that converts images but cannot sell them is a useful
+    thing to have before Stripe exists — otherwise the first deploy is
+    blocked on a payments account."""
+    _staging_settings(payments_enabled=False).check()
+
+
+def test_production_may_never_disable_payments():
+    """A live site that silently cannot take money is not a mode anyone
+    wants to discover by accident."""
+    with pytest.raises(RuntimeError, match="never in production"):
+        _staging_settings(environment="prod", payments_enabled=False).check()
+
+
+def test_staging_with_payments_on_still_demands_stripe():
+    with pytest.raises(RuntimeError, match="VEC_STRIPE_SECRET_KEY"):
+        _staging_settings(payments_enabled=True).check()
+
+
+def test_checkout_refuses_cleanly_when_payments_are_off(client, auth, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setenv("VEC_PAYMENTS_ENABLED", "0")
+    settings.cache_clear()
+    try:
+        response = client.post("/v1/checkout", json={"plan": "pack"}, headers=auth)
+        assert response.status_code == 503
+        assert response.json()["error_code"] == "billing_unavailable"
+    finally:
+        settings.cache_clear()

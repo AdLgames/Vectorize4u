@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- The mark from components/Brand.tsx: a square outline with a node in
+       the corner. White square behind it so it reads on a dark tab strip. -->
+  <rect width="32" height="32" rx="6" fill="#ffffff"/>
+  <rect x="6.5" y="6.5" width="19" height="19" rx="1.5" fill="none" stroke="#141a21" stroke-width="3"/>
+  <rect x="17.5" y="9.5" width="6" height="6" fill="#0088a8"/>
+</svg>

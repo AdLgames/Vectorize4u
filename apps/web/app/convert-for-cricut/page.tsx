@@ -80,6 +80,41 @@ export default function CricutPage() {
         </ol>
       </section>
 
+      <section style={{ maxWidth: "68ch", display: "grid", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-h2)", margin: 0 }}>Inside Design Space</h2>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          An imported SVG arrives as a group, one layer per colour. Ungroup it to cut each
+          colour from its own material, or attach the layers to keep them in position
+          relative to one another — attaching is what stops Design Space rearranging your
+          artwork onto the mat as separate pieces.
+        </p>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          For heat transfer vinyl, remember to mirror the design before cutting and to cut
+          the material face down. Nothing in the file can do that for you, and it is the
+          most common reason a perfectly good cut ends up backwards on the shirt.
+        </p>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          For Print Then Cut, the artwork is printed and the cut line follows the outside
+          of the shapes, so a design with a lot of tiny separate islands is worth
+          simplifying first — every island is another registration-sensitive cut.
+        </p>
+      </section>
+
+      <section style={{ maxWidth: "68ch", display: "grid", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-h2)", margin: 0 }}>Material decides the detail</h2>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          The same file cuts beautifully in cardstock and tears in vinyl. Thin material and
+          weeding favour simple shapes: raise “Clean up specks” and lower the detail, and
+          the design will weed in a minute rather than half an hour under a magnifier.
+        </p>
+        <p style={{ color: "var(--ink-500)", margin: 0 }}>
+          Chipboard and thick leather are the other direction — the blade needs room to
+          turn, so very tight corners and narrow necks between shapes will round off
+          regardless of what the file says. Design for the material you have, then check
+          the preview at the finished size rather than at screen size.
+        </p>
+      </section>
+
       <Faq items={FAQ} />
     </div>
   );

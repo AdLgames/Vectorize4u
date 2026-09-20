@@ -30,12 +30,16 @@ from app.storage import ObjectNotFound, object_key, storage
 
 router = APIRouter(prefix="/v1", tags=["batch"])
 
-PLAN_BATCH_LIMITS = {"free": 1, "starter": 25, "pro": 500, "api": 500}
-
-
 def _batch_limit(principal: Principal) -> int:
+    """From the catalog, which is the single source of truth for §10.
+
+    This used to be a second copy of the numbers. Two tables of plan
+    limits in one codebase is how a price change ships half-applied.
+    """
+    from app.catalog import plan_for
+
     plan = principal.user.plan if principal.user else "free"
-    return PLAN_BATCH_LIMITS.get(plan, 1)
+    return plan_for(plan).batch_limit
 
 
 @router.post("/batch", response_model=BatchCreateResponse)
@@ -88,7 +92,10 @@ def create_batch(
             BatchSlot(upload_id=upload_id, put_url=presigned.url, headers=presigned.headers)
         )
 
-    session.flush()
+    # Same reason as `create_upload`: the caller is about to PUT to every
+    # one of these slots and then start the batch, and the dependency's
+    # teardown has not run yet.
+    session.commit()
     return BatchCreateResponse(batch_id=batch.id, slots=slots, expires_in=cfg.upload_url_ttl_s)
 
 

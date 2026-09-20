@@ -258,6 +258,10 @@ class UsageDaily(Base):
     credits: Mapped[int] = mapped_column(Integer, default=0)
     bytes_in: Mapped[int] = mapped_column(BigInteger, default=0)
     bytes_out: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Tracer seconds, in milliseconds. §8 wants an alert when daily compute
+    # deviates from its trailing average, and job rows are deleted on
+    # schedule — so the number has to live here, where it survives them.
+    compute_ms: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
 class Upload(Base):

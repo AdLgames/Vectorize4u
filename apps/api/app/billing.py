@@ -40,6 +40,8 @@ class CheckoutSession:
 
 def _client() -> Any:
     cfg = settings()
+    if not cfg.payments_enabled:
+        raise BillingUnavailable("payments are disabled in this environment")
     if not cfg.stripe_secret_key:
         raise BillingUnavailable("VEC_STRIPE_SECRET_KEY is not set")
     import stripe

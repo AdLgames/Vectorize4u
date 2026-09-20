@@ -1,0 +1,30 @@
+# §4.2 lane 3 of 3: batches, on a capped pool of their own.
+#
+# The cap is the point. A 500-file batch that can grow without limit will
+# take every machine and the preview lane's promise goes with it, so this
+# app is scaled manually and deliberately:
+#
+#   fly scale count worker=2 -c infra/fly.worker-batch.toml
+#
+# Spot instances would be cheaper here and are allowed only once §4.1 is
+# satisfied — late acks, requeue on worker loss, a delivery cap and one task
+# per file, all of which are in worker/tasks.py — so preemption costs at
+# most one file. Verify before flipping it on, not after.
+app = "vectorize-worker-batch"
+primary_region = "lhr"
+
+# No [build] section: see the note in fly.api.toml. The deploy commands in
+# the Makefile pass --dockerfile and the context explicitly.
+
+[env]
+  VEC_ENVIRONMENT = "prod"
+  VEC_STORAGE_BACKEND = "r2"
+  QUEUES = "queue_batch"
+  CONCURRENCY = "2"
+
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
+
+[processes]
+  worker = ""

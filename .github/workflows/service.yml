@@ -80,6 +80,10 @@ jobs:
       - name: Typecheck
         run: cd apps/web && npm run typecheck
 
+      # §9: the intent pages must stay genuinely different from each other.
+      - name: Doorway-page guard
+        run: cd apps/web && npm run check-seo
+
       - name: Build
         run: cd apps/web && npm run build
 
