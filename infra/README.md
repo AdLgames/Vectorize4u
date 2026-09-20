@@ -18,7 +18,7 @@ sees them. Budget an afternoon, not five minutes.
 |---|---|---|
 | Cloudflare R2 bucket | Sources and outputs | Zero egress. Get the S3-compatible endpoint and a scoped key pair |
 | Postgres | The ledger, jobs, idempotency | Fly Postgres or any managed instance. One writer: the API |
-| Redis | Celery broker | **Fixed-price, on the private network.** Celery polls constantly, so per-command pricing bills you for idling |
+| Redis | Celery broker | **A machine you own** (`infra/fly.redis.toml`), not `fly redis create`: that is metered Upstash, and worse, it evicts — an evicted Celery message is a paid job that never runs |
 | Supabase project | Auth | Only the anon key ever reaches the browser |
 | Stripe account | Money | `make stripe-bootstrap` creates the products and prices |
 

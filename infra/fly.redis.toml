@@ -1,0 +1,50 @@
+# Redis as a machine we own, not a metered service.
+#
+# §2 is specific about this: "Fixed-price Redis on the worker's private
+# network. Celery polls constantly; per-command-priced Redis (e.g. Upstash
+# pay-as-you-go) turns idle polling into a bill." `fly redis create` is
+# Upstash, and it is metered — three idle workers polling a broker all day
+# is a lot of commands for zero work done.
+#
+# The second reason matters more than the money: **a broker must never
+# evict.** Upstash's default plans evict under memory pressure, and an
+# evicted Celery message is a paid job that silently never runs. The config
+# below sets `noeviction` and keeps the data on a volume.
+#
+#   fly apps create vectorize-redis
+#   fly volumes create redis_data --size 1 --region lhr -a vectorize-redis
+#   fly deploy -c infra/fly.redis.toml --image redis:7-alpine .
+#
+# Reachable from the other apps at redis://vectorize-redis.internal:6379/0
+# on the private network — it is never exposed publicly, which is why there
+# is no [http_service] here and no password: nothing outside the
+# organisation can route to it.
+app = "vectorize-redis"
+primary_region = "lhr"
+
+[experimental]
+  cmd = [
+    "redis-server",
+    "--appendonly", "yes",
+    "--dir", "/data",
+    # A queued job is work someone has paid for. Refusing writes when full
+    # is loud and recoverable; evicting is silent and is not.
+    "--maxmemory", "768mb",
+    "--maxmemory-policy", "noeviction",
+  ]
+
+[[mounts]]
+  source = "redis_data"
+  destination = "/data"
+
+[[services]]
+  internal_port = 6379
+  protocol = "tcp"
+  # No public ports: the workers reach this over .internal only.
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
