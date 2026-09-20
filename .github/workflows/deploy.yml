@@ -46,6 +46,18 @@ on:
         required: true
         type: string
         default: vectorize4u
+      lanes:
+        description: >-
+          "three" is §4.2: a worker app per queue, so a 500-file batch can
+          never delay a preview. "single" is one worker taking every lane
+          at a third of the cost, and gives that guarantee up — right
+          until somebody is actually waiting on a preview.
+        required: true
+        type: choice
+        default: single
+        options:
+          - single
+          - three
       size:
         description: >-
           "staging" runs every worker on a small shared VM — right for a
@@ -78,7 +90,7 @@ env:
   API_APP: ${{ inputs.prefix }}-api
   REDIS_APP: ${{ inputs.prefix }}-redis
   DB_APP: ${{ inputs.db_app }}
-  WORKER_APPS: ${{ inputs.prefix }}-worker-preview ${{ inputs.prefix }}-worker-sync ${{ inputs.prefix }}-worker-batch
+
 
 jobs:
   bootstrap:
@@ -87,6 +99,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Which worker apps this shape needs
+        run: |
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            echo "WORKER_APPS=${{ inputs.prefix }}-worker" >> "$GITHUB_ENV"
+          else
+            names="${{ inputs.prefix }}-worker-preview"
+            names="$names ${{ inputs.prefix }}-worker-sync"
+            names="$names ${{ inputs.prefix }}-worker-batch"
+            echo "WORKER_APPS=$names" >> "$GITHUB_ENV"
+          fi
 
       - name: Which organisation is this token in
         run: |
@@ -233,6 +256,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Which worker apps this shape needs
+        run: |
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            echo "WORKER_APPS=${{ inputs.prefix }}-worker" >> "$GITHUB_ENV"
+          else
+            names="${{ inputs.prefix }}-worker-preview"
+            names="$names ${{ inputs.prefix }}-worker-sync"
+            names="$names ${{ inputs.prefix }}-worker-batch"
+            echo "WORKER_APPS=$names" >> "$GITHUB_ENV"
+          fi
+
       - name: Write the shared configuration
         env:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -312,19 +346,36 @@ jobs:
           fi
           grep -H -E 'primary_region|^  size|^  memory' infra/*.toml
 
+      - name: Which worker apps this shape needs
+        run: |
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            echo "WORKER_APPS=${{ inputs.prefix }}-worker" >> "$GITHUB_ENV"
+          else
+            names="${{ inputs.prefix }}-worker-preview"
+            names="$names ${{ inputs.prefix }}-worker-sync"
+            names="$names ${{ inputs.prefix }}-worker-batch"
+            echo "WORKER_APPS=$names" >> "$GITHUB_ENV"
+          fi
+
       - name: API (runs alembic upgrade head as its release command)
         run: |
           flyctl deploy --config infra/fly.api.toml --dockerfile Dockerfile \
             -a "$API_APP" --yes .
 
-      - name: Three worker lanes (§4.2)
+      - name: The worker lanes (§4.2)
         run: |
           set -u
-          for lane in preview sync batch; do
-            flyctl deploy --config "infra/fly.worker-$lane.toml" \
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            flyctl deploy --config infra/fly.worker-single.toml \
               --dockerfile infra/Dockerfile.worker \
-              -a "${{ inputs.prefix }}-worker-$lane" --yes .
-          done
+              -a "${{ inputs.prefix }}-worker" --yes .
+          else
+            for lane in preview sync batch; do
+              flyctl deploy --config "infra/fly.worker-$lane.toml" \
+                --dockerfile infra/Dockerfile.worker \
+                -a "${{ inputs.prefix }}-worker-$lane" --yes .
+            done
+          fi
 
       - name: Smoke test
         run: |
