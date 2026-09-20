@@ -193,6 +193,7 @@ def vectorize(
         source_key=source_key,
         source_bytes=size,
         ip_hash=ratelimit.ip_hash(client_ip(request)),
+        webhook_url=body.webhook_url,
     )
     jobsvc.record_idempotency(
         session,

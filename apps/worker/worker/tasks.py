@@ -16,6 +16,7 @@ from app import credits
 from app.db import session_scope
 from app.jobs import log_event
 from app.models import Batch, Job, JobCandidate, UsageDaily, User, utcnow
+from app.queue import dispatcher
 from app.storage import ObjectNotFound, object_key, storage
 from celery.exceptions import Reject
 from sqlalchemy import select
@@ -64,10 +65,12 @@ def vectorize_job(self: Any, job_id: str) -> dict[str, Any]:
         # Poison pill. An image that kills its worker would otherwise be
         # redelivered forever under late acks + requeue-on-loss (§4.1).
         log.error("job %s exceeded the delivery cap (%d)", job_id, MAX_DELIVERIES)
-        with session_scope() as session:
-            job = session.get(Job, job_id)
-            if job is not None and job.status != "complete":
-                _fail(session, job, "tracer_crash", f"delivery cap {MAX_DELIVERIES} exceeded")
+        _fail_job(
+            job_id,
+            "tracer_crash",
+            f"delivery cap {MAX_DELIVERIES} exceeded",
+            unless="complete",
+        )
         raise Reject(f"job {job_id} exceeded the delivery cap", requeue=False)
 
     return run_job_inline(job_id, delivery=deliveries)
@@ -88,6 +91,9 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
             return {"status": "already_complete"}
         if not job.source_key:
             _fail(session, job, "source_deleted", "the source image is gone")
+            pending = _job_callback(job)
+            session.commit()
+            _notify(pending)
             return {"status": "failed"}
 
         job.status = "processing"
@@ -100,10 +106,7 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
     try:
         data = storage().get(source_key)
     except ObjectNotFound:
-        with session_scope() as session:
-            job = session.get(Job, job_id)
-            if job is not None:
-                _fail(session, job, "source_deleted", "the source object is missing")
+        _fail_job(job_id, "source_deleted", "the source object is missing")
         return {"status": "failed"}
 
     started = time.perf_counter()
@@ -111,18 +114,12 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
         result = run_engine(data, _engine_options(options_blob))
     except BadImage as exc:
         # 400 class: the image is the problem. Never retried, never alerted.
-        with session_scope() as session:
-            job = session.get(Job, job_id)
-            if job is not None:
-                _fail(session, job, exc.error_code, str(exc))
+        _fail_job(job_id, exc.error_code, str(exc))
         return {"status": "failed", "error_code": exc.error_code}
     except EngineError as exc:
         # 500 class: ours. Alert, and let the delivery cap bound the retries.
         log.exception("engine failure on job %s", job_id)
-        with session_scope() as session:
-            job = session.get(Job, job_id)
-            if job is not None:
-                _fail(session, job, exc.error_code, str(exc))
+        _fail_job(job_id, exc.error_code, str(exc))
         return {"status": "failed", "error_code": exc.error_code}
 
     duration_ms = int((time.perf_counter() - started) * 1000)
@@ -219,11 +216,42 @@ def run_job_inline(job_id: str, *, delivery: int = 1) -> dict[str, Any]:
         )
 
         batch_id = job.batch_id
+        callback = _job_callback(job)
 
+    _notify(callback)
     if batch_id:
         _maybe_finish_batch(batch_id)
 
     return {"status": "complete", "duration_ms": duration_ms}
+
+
+def _job_callback(job: Job) -> tuple[str, dict[str, Any]] | None:
+    """The payload for a job's own `webhook_url`, or None if it has none.
+
+    Read inside the session and delivered outside it: the callback is a
+    network call, and holding a database transaction open across one is how
+    a slow customer endpoint becomes our outage.
+    """
+    if not job.webhook_url:
+        return None
+    return job.webhook_url, {
+        "type": f"job.{job.status}",
+        "job_id": job.id,
+        "status": job.status,
+        "error_code": job.error_code,
+        "credits_charged": job.credits_charged or 0,
+    }
+
+
+def _notify(callback: tuple[str, dict[str, Any]] | None) -> None:
+    """Hand a callback to the queue.
+
+    Routed through the same dispatcher as the jobs themselves, so the inline
+    mode used by tests and by local development has nothing to special-case.
+    """
+    if callback is None:
+        return
+    dispatcher().send_webhook(callback[0], callback[1])
 
 
 def _engine_options(blob: dict[str, Any]) -> Any:
@@ -275,6 +303,22 @@ def _record_usage(session: Any, job: Job, bytes_out: int) -> None:
     row.bytes_out = (row.bytes_out or 0) + bytes_out
 
 
+def _fail_job(job_id: str, error_code: str, detail: str, *, unless: str | None = None) -> None:
+    """Fail a job in its own transaction, then fire its callback.
+
+    The callback goes out after the commit, never inside it: a webhook that
+    announces a state the database then rolls back is worse than a late one.
+    """
+    callback = None
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None or (unless is not None and job.status == unless):
+            return
+        _fail(session, job, error_code, detail)
+        callback = _job_callback(job)
+    _notify(callback)
+
+
 def _fail(session: Any, job: Job, error_code: str, detail: str) -> None:
     job.status = "failed"
     job.error_code = error_code
@@ -301,7 +345,7 @@ def _maybe_finish_batch(batch_id: str) -> None:
 
     build_zip_inline(batch_id)
     if webhook_url:
-        deliver_webhook.delay(webhook_url, {"type": "batch.complete", "batch_id": batch_id})
+        _notify((webhook_url, {"type": "batch.complete", "batch_id": batch_id}))
 
 
 @celery_app.task(name="worker.tasks.build_batch_zip")
@@ -353,13 +397,47 @@ def sweep_expired() -> dict[str, int]:
 
 @celery_app.task(name="worker.tasks.deliver_webhook", bind=True, max_retries=5)
 def deliver_webhook(self: Any, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Signed with HMAC-SHA256 and a timestamp, retried with backoff (§6)."""
+    """Retried with backoff (§6); see `deliver_webhook_inline` for the rules."""
+    try:
+        return deliver_webhook_inline(url, payload)
+    except WebhookDeliveryFailed as exc:  # pragma: no cover - network dependent
+        raise self.retry(exc=exc, countdown=min(300, 2**self.request.retries * 5)) from exc
+
+
+class WebhookDeliveryFailed(Exception):
+    """The endpoint was reachable-in-principle but did not accept the call."""
+
+
+def _resolve_callback(url: str) -> tuple[str, str]:
+    """(ip, host) for a callback URL, or raise UnsafeUrl. A seam for tests."""
+    from app.fetcher import validate
+
+    return validate(url)
+
+
+def deliver_webhook_inline(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """POST a signed callback. HMAC-SHA256 over `timestamp.body` (§6).
+
+    The destination is re-checked here, not only when the job was accepted:
+    a callback host that resolved publicly an hour ago can point at our own
+    metadata service by the time we deliver. Redirects are not followed for
+    the same reason.
+    """
     import hashlib
     import hmac
     import json
+    from urllib.parse import urlparse, urlunparse
 
     import httpx
     from app.config import settings
+    from app.fetcher import UnsafeUrl
+
+    try:
+        ip, host = _resolve_callback(url)
+    except UnsafeUrl as exc:
+        # Not retried: a private address does not become public on a retry.
+        log.warning("refusing webhook delivery to %s: %s", url, exc)
+        return {"status": "refused", "reason": str(exc)}
 
     body = json.dumps(payload, separators=(",", ":")).encode()
     timestamp = str(int(time.time()))
@@ -369,18 +447,25 @@ def deliver_webhook(self: Any, url: str, payload: dict[str, Any]) -> dict[str, A
         hashlib.sha256,
     ).hexdigest()
 
+    parsed = urlparse(url)
+    connect_host = f"[{ip}]" if ":" in ip else ip
+    target = urlunparse(parsed._replace(netloc=connect_host))
+
     try:
         response = httpx.post(
-            url,
+            target,
             content=body,
             headers={
+                "Host": host,
                 "Content-Type": "application/json",
                 "X-Vectorize-Timestamp": timestamp,
                 "X-Vectorize-Signature": f"sha256={signature}",
             },
             timeout=10.0,
+            follow_redirects=False,
+            extensions={"sni_hostname": host},
         )
         response.raise_for_status()
-    except Exception as exc:  # pragma: no cover - network dependent
-        raise self.retry(exc=exc, countdown=min(300, 2 ** self.request.retries * 5)) from exc
+    except Exception as exc:
+        raise WebhookDeliveryFailed(str(exc)) from exc
     return {"status": "delivered"}

@@ -174,6 +174,7 @@ def create_job(
     source_bytes: int | None,
     ip_hash: str | None,
     parent: Job | None = None,
+    webhook_url: str | None = None,
 ) -> Job:
     job = Job(
         user_id=principal.user_id,
@@ -183,6 +184,7 @@ def create_job(
         source_key=source_key,
         source_bytes=source_bytes,
         ip_hash=ip_hash,
+        webhook_url=webhook_url,
         expires_at=retention_expiry(principal),
         root_job_id="",
         parent_job_id=parent.id if parent else None,

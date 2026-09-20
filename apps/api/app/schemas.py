@@ -37,6 +37,17 @@ class JobOptions(BaseModel):
         return list(dict.fromkeys(["svg", *value]))
 
 
+def _https_url(value: str | None) -> str | None:
+    """Callback URLs get the same rule as source URLs: https only.
+
+    The full SSRF check (DNS resolved, internal addresses refused) happens
+    again at delivery time, because DNS can change between the two.
+    """
+    if value and not value.startswith("https://"):
+        raise ValueError("only https URLs are accepted")
+    return value
+
+
 class UploadRequest(BaseModel):
     content_type: str
     content_length: int = Field(gt=0)
@@ -57,12 +68,10 @@ class VectorizeRequest(BaseModel):
     options: JobOptions = Field(default_factory=JobOptions)
     webhook_url: str | None = None
 
-    @field_validator("url")
+    @field_validator("url", "webhook_url")
     @classmethod
     def _https_only(cls, value: str | None) -> str | None:
-        if value and not value.startswith("https://"):
-            raise ValueError("only https URLs are accepted")
-        return value
+        return _https_url(value)
 
 
 class TweakRequest(BaseModel):
@@ -117,6 +126,11 @@ class BatchCreateRequest(BaseModel):
     webhook_url: str | None = None
     content_type: str = "image/png"
     content_length: int = Field(default=25 * 1024 * 1024, gt=0)
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _https_only(cls, value: str | None) -> str | None:
+        return _https_url(value)
 
 
 class BatchSlot(BaseModel):

@@ -139,6 +139,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     options: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     idempotency_key: Mapped[str | None] = mapped_column(String(255))
+    webhook_url: Mapped[str | None] = mapped_column(Text)
 
     source_key: Mapped[str | None] = mapped_column(String(512))
     source_bytes: Mapped[int | None] = mapped_column(BigInteger)

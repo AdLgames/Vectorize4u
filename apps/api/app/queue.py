@@ -27,6 +27,7 @@ QUEUE_PRIORITY: dict[Lane, int] = {"preview": 9, "sync": 5, "batch": 1}
 
 TASK_NAME = "worker.tasks.vectorize_job"
 ZIP_TASK_NAME = "worker.tasks.build_batch_zip"
+WEBHOOK_TASK_NAME = "worker.tasks.deliver_webhook"
 
 
 @lru_cache(maxsize=1)
@@ -57,6 +58,12 @@ class Dispatcher:
         )
         return str(result.id)
 
+    def send_webhook(self, url: str, payload: dict[str, Any]) -> str | None:
+        result = _app().send_task(
+            WEBHOOK_TASK_NAME, args=[url, payload], queue=QUEUE_NAMES["batch"], priority=1
+        )
+        return str(result.id)
+
 
 class InlineDispatcher(Dispatcher):
     """Run jobs synchronously in-process.
@@ -76,6 +83,12 @@ class InlineDispatcher(Dispatcher):
         from worker.tasks import build_zip_inline
 
         build_zip_inline(batch_id)
+        return None
+
+    def send_webhook(self, url: str, payload: dict[str, Any]) -> str | None:
+        from worker import tasks
+
+        tasks.deliver_webhook_inline(url, payload)
         return None
 
 
