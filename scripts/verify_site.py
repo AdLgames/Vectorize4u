@@ -100,6 +100,15 @@ def sitemap(site: str) -> list[str]:
             f"the sitemap points somewhere else, e.g. {wrong_origin[0]} — "
             f"NEXT_PUBLIC_SITE_URL does not match {site}"
         )
+    # sitemap.ts builds `${SITE}/path`, so a NEXT_PUBLIC_SITE_URL that ends
+    # in a slash yields `https://host//path`. It still resolves, which is
+    # why it survives a look at the site, and every canonical is wrong.
+    doubled = [url for url in locations if "//" in url.split("://", 1)[-1]]
+    if doubled:
+        raise StepFailed(
+            f"the sitemap has a doubled slash, e.g. {doubled[0]} — "
+            "NEXT_PUBLIC_SITE_URL ends in a '/' and must not"
+        )
     print(f"  sitemap     ok  ({len(locations)} URLs)")
     return locations
 

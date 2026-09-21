@@ -25,9 +25,22 @@ workflow to run. In the Vercel dashboard:
 
 ## Once: the environment variables
 
-Set all three for **Production**, and the first two for Preview too, or
+Set all four for **Production**, and the first two for Preview too, or
 preview deployments will quietly talk to a different API than the one you
-think you are testing:
+think you are testing.
+
+Two things about the form itself:
+
+- **Type: `Config`, not `Secret`.** Vercel warns about this, and it is
+  right. `NEXT_PUBLIC_` means the value is compiled into JavaScript that
+  anyone can read in DevTools, so marking it secret claims a privacy the
+  prefix has already given away. Every variable below is public by
+  nature. The one Supabase value that must never appear here in any form,
+  under any type, is the service-role key.
+- **No trailing slash on the URLs.** `sitemap.ts` builds `${SITE}/path`,
+  so a `NEXT_PUBLIC_SITE_URL` ending in `/` yields `https://host//path`
+  for every canonical and every sitemap entry. Those still resolve, which
+  is exactly why it survives a glance at the site.
 
 | Variable | Value | Why |
 | --- | --- | --- |
