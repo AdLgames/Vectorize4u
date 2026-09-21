@@ -485,12 +485,12 @@ jobs:
             echo "          $REDIS_APP has a started machine, and that"
             echo "          VEC_REDIS_URL is set on $LANE_APP."
           elif [ "$crashed" != "0" ]; then
-            echo " VERDICT: the worker is raising on boot. The traceback is in the"
-            echo "          log group below."
+            echo " VERDICT: the worker is raising on boot, before Celery prints its"
+            echo "          banner — so it dies while importing, not while working."
           elif [ "$ready" = "0" ]; then
             echo " VERDICT: the machine is up but Celery never printed its banner,"
             echo "          so the process is not the worker or it dies before"
-            echo "          logging. Check the log group below."
+            echo "          logging."
           elif [ "$consumed" = "0" ]; then
             echo " VERDICT: Celery started and connected, but received no task."
             echo "          The API published to a queue this worker is not"
@@ -500,6 +500,23 @@ jobs:
           else
             echo " VERDICT: the worker did receive tasks. The failure is inside the"
             echo "          job, not in delivery — see the log group below."
+          fi
+          echo "--------------------------------------------------------------"
+
+          # The excerpt belongs *in* the verdict, not in a fold below it.
+          # A traceback the reader has to go and find is a traceback that
+          # costs another run of this workflow to look at.
+          if [ "$unsafe" != "0" ]; then
+            echo "$logs" | grep 'unsafe configuration' | tail -2
+          elif [ "$crashed" != "0" ]; then
+            # The last traceback, and the lines after it that carry the
+            # exception type and message.
+            echo "$logs" | awk '
+              /Traceback/ { start = NR }
+              { line[NR] = $0 }
+              END { if (start) for (i = start; i <= NR && i < start + 30; i++) print line[i] }'
+          elif [ "$ready" = "0" ]; then
+            echo "$logs" | tail -25
           fi
           echo "=============================================================="
           echo
