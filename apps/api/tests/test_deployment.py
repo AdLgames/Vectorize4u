@@ -320,3 +320,26 @@ def test_payments_are_observable_from_outside():
     assert "scripts/verify_payments.py" in (
         ROOT / ".github/workflows/verify-site.yml"
     ).read_text(), "the payments check must be runnable without a terminal"
+
+
+def test_the_stripe_stage_installs_the_engine_before_the_api():
+    """apps/api depends on vectorize-engine, which is not on PyPI.
+
+    Installing the API alone sends pip looking for it there and fails with
+    "No matching distribution found for vectorize-engine" — which reads
+    like a broken package and is really a missing local path.
+    """
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    installs = [
+        step["run"]
+        for step in workflow["jobs"]["stripe"]["steps"]
+        if "pip install" in str(step.get("run", ""))
+    ]
+    assert installs, "the stripe stage installs nothing to run the bootstrap with"
+    line = installs[0]
+    assert "packages/engine" in line, "the engine must be installed from the path"
+    assert line.index("packages/engine") < line.index("apps/api"), (
+        "the engine has to come first, as in the Dockerfiles"
+    )

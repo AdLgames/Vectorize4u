@@ -702,7 +702,12 @@ jobs:
               ;;
           esac
 
-      - run: pip install --quiet "./apps/api" stripe
+      # The engine first, and from the path: apps/api depends on
+      # vectorize-engine, which is this repository's own package and is not
+      # on PyPI, so installing the API alone fails looking for it there.
+      # Same order as infra/Dockerfile.worker, for the same reason.
+      # `stripe` comes with the API's dependencies, so it is not repeated.
+      - run: pip install --quiet ./packages/engine ./apps/api
 
       - name: Products, prices and the webhook endpoint
         env:

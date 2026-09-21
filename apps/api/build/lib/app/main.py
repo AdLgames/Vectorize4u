@@ -136,4 +136,11 @@ def limits() -> dict[str, Any]:
         "max_upload_bytes": cfg.max_upload_bytes,
         "retention_free_hours": cfg.retention_free_hours,
         "retention_paid_days": cfg.retention_paid_days,
+        # Whether this deployment can take money. A client needs it to know
+        # if offering a plan leads anywhere, and it is the only way to tell
+        # a configured deployment from one where checkout answers 503 —
+        # /v1/plans is served from the catalogue and reads the same either
+        # way. It says nothing secret: a visitor discovers it by clicking
+        # Buy, and the price list is public already.
+        "payments_enabled": cfg.payments_enabled,
     }
