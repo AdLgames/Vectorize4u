@@ -159,3 +159,26 @@ def test_the_lifecycle_prefixes_are_the_ones_we_write_under():
     for tier in ("free", "paid"):
         key = object_key(tier, "source", "job_1", "source.bin")  # type: ignore[arg-type]
         assert any(key.startswith(prefix) for prefix in prefixes), key
+
+
+def test_the_deploy_workflow_verifies_more_than_health():
+    """A green deploy has to mean "it converts images", not "it booted".
+
+    `/health` answers before the worker has consumed anything, before R2
+    has accepted a byte and before a tracer binary has been exec'd. The
+    verify stage walks the anonymous preview path instead, so this asserts
+    the wiring between the two files stays intact — the script's name is
+    the only thing tying them together.
+    """
+    workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
+    script = ROOT / "scripts/verify_live.py"
+
+    assert script.exists(), "the deploy workflow's verify stage has no script to run"
+    assert "scripts/verify_live.py" in workflow
+    assert "- verify" in workflow, "verify must be selectable on its own, without a redeploy"
+
+    # The default image has to be in the repository, because the runner has
+    # only the checkout: a missing fixture fails the stage after a deploy.
+    default = re.search(r'DEFAULT_IMAGE = REPO / "(.+?)" / "(.+?)" / "(.+?)"', script.read_text())
+    assert default is not None, "DEFAULT_IMAGE moved; this test can no longer find it"
+    assert (ROOT / default.group(1) / default.group(2) / default.group(3)).exists()
