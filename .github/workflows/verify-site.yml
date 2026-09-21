@@ -1,0 +1,53 @@
+# Check the deployed site, from a phone.
+#
+# Vercel builds on push, so there is no deploy stage here — only the
+# question a Vercel build cannot answer: is the site that shipped pointed
+# at the live API, or at the localhost default it falls back to when the
+# environment variables are missing? See docs/deploy-the-web-app.md.
+
+name: Verify the site
+
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: >-
+          The deployed site, with scheme — your domain once it is attached,
+          or the vercel.app URL before that. It must match whatever
+          NEXT_PUBLIC_SITE_URL was set to at build time, because the
+          sitemap and every canonical are baked in.
+        required: true
+        type: string
+        default: https://vectorize4u.vercel.app
+      api:
+        description: The API the site should be talking to.
+        required: true
+        type: string
+        default: https://vectorize4u-api.fly.dev
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Is the site wired to the live API
+        run: |
+          python scripts/verify_site.py "${{ inputs.site }}" --api "${{ inputs.api }}"
+
+      - name: What to change if that failed
+        if: failure()
+        run: |
+          echo "The failure above names the cause. The two that need a rebuild,"
+          echo "not a settings change, because Next bakes them in at build time:"
+          echo
+          echo " * 'still points at 127.0.0.1:8000' -> NEXT_PUBLIC_API_BASE was"
+          echo "   missing from the Vercel build. Set it, then redeploy."
+          echo " * 'advertises vectorize.example'   -> NEXT_PUBLIC_SITE_URL was"
+          echo "   missing. Set it to the real domain, then redeploy."
+          echo
+          echo "Setting an environment variable in Vercel does not change a build"
+          echo "that already happened. Redeploy after every change to these two."

@@ -224,3 +224,34 @@ def test_every_app_shares_one_database():
         "which is the whole bug"
     )
     assert "$API_APP" in attach, "the app that runs the migrations is the one that attaches"
+
+
+def test_the_site_check_guards_the_two_baked_in_variables():
+    """Next inlines NEXT_PUBLIC_* at build time, and both have defaults.
+
+    A build that never receives them succeeds, deploys and renders. The
+    site then talks to 127.0.0.1 and advertises vectorize.example to
+    Google, and nothing on any server logs either. The check that catches
+    it has to know the exact defaults from next.config.ts, so assert they
+    still agree rather than discovering the drift in production.
+    """
+    config = (ROOT / "apps/web/next.config.ts").read_text()
+    script = (ROOT / "scripts/verify_site.py").read_text()
+    workflow = (ROOT / ".github/workflows/verify-site.yml").read_text()
+
+    assert "scripts/verify_site.py" in workflow, "the check must be runnable without a terminal"
+
+    # The fallbacks the check hunts for, taken from the file that sets them.
+    for variable in ("NEXT_PUBLIC_API_BASE", "NEXT_PUBLIC_SITE_URL"):
+        assert variable in config, f"{variable} is no longer in next.config.ts"
+    api_default = re.search(r'NEXT_PUBLIC_API_BASE:.*\?\?\s*"([^"]+)"', config)
+    site_default = re.search(r'NEXT_PUBLIC_SITE_URL:.*\?\?\s*"([^"]+)"', config)
+    assert api_default and site_default, "the defaults moved; the check cannot find them"
+
+    # "http://127.0.0.1:8000" -> "127.0.0.1:8000", which is what ships.
+    assert api_default.group(1).split("//")[-1] in script, (
+        "next.config.ts falls back to a localhost API the check does not look for"
+    )
+    assert site_default.group(1).split("//")[-1] in script, (
+        "next.config.ts falls back to a placeholder domain the check does not look for"
+    )
