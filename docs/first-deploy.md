@@ -196,7 +196,11 @@ gate doing its job.
 Then deploy the web app to Vercel, pointed at `apps/web`, with
 `NEXT_PUBLIC_API_BASE`, `NEXT_PUBLIC_SITE_URL` and the Supabase **anon**
 key. Uploads never pass through it (§4.3), so its 4.5 MB body cap does not
-matter.
+matter. **docs/deploy-the-web-app.md** has the settings and the reason the
+first two of those variables need checking rather than trusting: Next
+bakes them in at build time and both have a working default, so a build
+that never received them deploys, renders, and then talks to
+`127.0.0.1`.
 
 ## 9. Only now, payments
 
