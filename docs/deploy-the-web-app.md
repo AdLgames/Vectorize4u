@@ -47,12 +47,26 @@ Two things about the form itself:
 | `NEXT_PUBLIC_API_BASE` | `https://vectorize4u-api.fly.dev` | Where the browser sends conversions. |
 | `NEXT_PUBLIC_SITE_URL` | your real domain, e.g. `https://vectorize4u.com` | Canonicals, `sitemap.xml`, Open Graph. |
 | `NEXT_PUBLIC_SUPABASE_URL` | your Supabase project URL | Sign-in. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the **anon** key | Sign-in. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the **publishable** key, `sb_publishable_…` | Sign-in. |
 
 The last two are the only Supabase values that belong in a browser
-bundle. The **service-role key never goes near the web app** — it
-bypasses every row-level policy, and `NEXT_PUBLIC_` means "compiled into
-JavaScript anyone can read".
+bundle. Supabase renamed these: the dashboard now offers a *publishable*
+key and a *secret* key, which replace the old `anon` and `service_role`
+JWTs. Publishable is the one to use — the variable keeps the older name
+because that is the argument `supabase-js` takes. The **secret key goes
+nowhere**: not here, not on Fly, not into a chat window. Nothing in this
+repository reads it. It bypasses every row-level policy, and
+`NEXT_PUBLIC_` means "compiled into JavaScript anyone can read".
+
+Check **Authentication → JWT Keys** in the same dashboard while you are
+there. `app/config.py` derives the JWKS endpoint from the project URL
+(`/auth/v1/.well-known/jwks.json`), which is where *asymmetric* signing
+keys are published. A project still on the legacy HS256 shared secret
+publishes no JWKS, so every signed-in request answers 401 while
+anonymous previews carry on working — a confusing half-broken state.
+Migrating to signing keys on that page is the better fix, because there
+is then no shared secret to store anywhere; the alternative is setting
+`VEC_SUPABASE_JWT_SECRET` on the API and the workers.
 
 Without the Supabase pair the site still works: anonymous previews are
 free and rate-limited by IP (§7), which is the landing page's whole
