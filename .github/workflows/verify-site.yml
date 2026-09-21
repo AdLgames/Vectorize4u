@@ -26,13 +26,15 @@ on:
         default: https://vectorize4u-api.fly.dev
       supabase:
         description: >-
-          The Supabase project URL, to also check sign-in. Leave it empty to
-          check only the site. Nothing is emailed either way: the sign-in
-          check is read-only, because a real magic-link round trip needs an
-          inbox and burns the project's email rate limit.
+          Whether to check sign-in too. "auto" reads the project URL out of
+          what the site shipped, so there is no twenty-character project ref
+          to mistype; give a URL to pin a specific project, or empty to skip
+          sign-in and check only the site. Nothing is emailed either way:
+          the check is read-only, because a real magic-link round trip needs
+          an inbox and burns the project's email rate limit.
         required: false
         type: string
-        default: ""
+        default: auto
 
 jobs:
   site:

@@ -227,17 +227,61 @@ def api_trusts_this_project(api: str, kid: str) -> None:
     print(f"  project     ok  (the API knows key {kid[:12]}… from this project)")
 
 
+def discover_project(site: str) -> str:
+    """Read the project URL out of what the site shipped.
+
+    The alternative is typing a twenty-character project ref by hand into a
+    workflow input, which is a transcription error waiting to happen. It
+    does make the "the site names this project" check circular, so that
+    check says where the URL came from.
+    """
+    status, raw = _get(site + "/signin")
+    if status != 200:
+        raise StepFailed(f"GET /signin answered {status}, so there is nothing to read")
+    html = raw.decode("utf-8", "replace")
+    bodies = [html]
+    for path in re.findall(r'src="(/_next/static/[^"]+\.js)"', html)[:25]:
+        code, body = _get(site + path)
+        if code == 200:
+            bodies.append(body.decode("utf-8", "replace"))
+
+    found = set(re.findall(r"https://[a-z0-9-]+\.supabase\.co", "\n".join(bodies)))
+    if not found:
+        raise StepFailed(
+            "no Supabase project URL appears anywhere in /signin or its bundles, so "
+            "NEXT_PUBLIC_SUPABASE_URL never reached this build. Set it and redeploy."
+        )
+    if len(found) > 1:
+        raise StepFailed(
+            f"the build names more than one Supabase project: {sorted(found)}. "
+            "Pass --supabase to say which one is meant to be live."
+        )
+    return found.pop()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("site_url")
     parser.add_argument("--api", required=True)
-    parser.add_argument("--supabase", required=True, help="https://<ref>.supabase.co")
+    parser.add_argument(
+        "--supabase",
+        default="auto",
+        help="https://<ref>.supabase.co, or 'auto' to read it from the site",
+    )
     args = parser.parse_args()
 
     site = args.site_url.rstrip("/")
     api = args.api.rstrip("/")
-    supabase = args.supabase.rstrip("/")
-    print(f"verifying sign-in across {site}, {api} and {supabase}")
+
+    discovered = args.supabase.strip().lower() in ("", "auto")
+    try:
+        supabase = discover_project(site) if discovered else args.supabase.rstrip("/")
+    except StepFailed as failure:
+        print(f"verifying sign-in for {site}\n\nFAILED: {failure}", file=sys.stderr)
+        return 1
+
+    origin = "read from the site's own bundle" if discovered else "given"
+    print(f"verifying sign-in across {site}, {api} and {supabase} ({origin})")
 
     try:
         kid = jwks(supabase)
