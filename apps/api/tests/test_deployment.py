@@ -41,6 +41,13 @@ def test_the_tracer_versions_are_pinned_everywhere(pinned):
     assert f'ARG VTRACER_VERSION={pinned["VTRACER_VERSION"]}' in worker
     assert f'ARG RESVG_VERSION={pinned["RESVG_VERSION"]}' in worker
 
+    # The API rasterises preview tiles with resvg too (§7.4), and it has to
+    # be the same one the worker scored with: two rasterisers means the
+    # score describes an image nobody is ever shown.
+    api = (ROOT / "Dockerfile").read_text()
+    assert f'ARG RESVG_VERSION={pinned["RESVG_VERSION"]}' in api
+    assert "/usr/local/bin/resvg" in api, "the API image must carry the binary, not just pin it"
+
     for workflow in ("engine.yml", "service.yml"):
         ci = (ROOT / ".github" / "workflows" / workflow).read_text()
         assert f'cargo install vtracer --version {pinned["VTRACER_VERSION"]}' in ci, workflow
