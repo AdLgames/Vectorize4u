@@ -36,6 +36,17 @@ on:
         type: string
         default: auto
 
+      payments:
+        description: >-
+          "yes" also checks that this deployment can take money: payments
+          reported on, the site's prices matching what the API charges, and
+          a webhook that refuses an unsigned event. Nothing is bought — a
+          real purchase needs a session and a card. Leave it "no" until the
+          stripe stage has run and been deployed, or this fails by design.
+        required: false
+        type: string
+        default: "no"
+
 jobs:
   site:
     runs-on: ubuntu-latest
@@ -57,6 +68,11 @@ jobs:
         run: |
           python scripts/verify_auth.py "${{ inputs.site }}" \
             --api "${{ inputs.api }}" --supabase "${{ inputs.supabase }}"
+
+      - name: Can this deployment take money
+        if: inputs.payments == 'yes'
+        run: |
+          python scripts/verify_payments.py "${{ inputs.site }}" --api "${{ inputs.api }}"
 
       - name: What to change if that failed
         if: failure()

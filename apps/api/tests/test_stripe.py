@@ -244,3 +244,107 @@ def test_checkout_refuses_cleanly_when_payments_are_off(client, auth, monkeypatc
         assert response.json()["error_code"] == "billing_unavailable"
     finally:
         settings.cache_clear()
+
+
+# -- the bootstrap's webhook registration (runs from Actions, §payments) ----
+
+
+class _StubWebhooks:
+    """Enough of stripe.WebhookEndpoint to exercise the three paths."""
+
+    def __init__(self, existing: list[dict]) -> None:
+        self.existing = existing
+        self.created: list[dict] = []
+        self.modified: list[tuple[str, list[str]]] = []
+
+    # The script calls .list(...).auto_paging_iter()
+    def list(self, **_: object) -> _StubWebhooks:
+        return self
+
+    def auto_paging_iter(self):
+        return iter(self.existing)
+
+    def create(self, **kwargs: object) -> dict:
+        made = {"id": "we_new", "secret": "whsec_fresh", **kwargs}
+        self.created.append(made)
+        return made
+
+    def modify(self, endpoint_id: str, **kwargs: object) -> dict:
+        self.modified.append((endpoint_id, list(kwargs.get("enabled_events") or [])))
+        return {"id": endpoint_id}
+
+
+class _StubStripe:
+    def __init__(self, existing: list[dict]) -> None:
+        self.WebhookEndpoint = _StubWebhooks(existing)
+
+
+def _bootstrap():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "bootstrap_stripe.py"
+    spec = importlib.util.spec_from_file_location("bootstrap_stripe", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+URL = "https://vectorize4u-api.fly.dev/v1/stripe/webhook"
+
+
+def test_the_webhook_subscribes_to_exactly_what_the_handler_handles():
+    """An endpoint missing an event we handle silently drops paid work."""
+    from app.routers.stripe_webhooks import HANDLED
+
+    stripe = _StubStripe([])
+    endpoint_id, secret = _bootstrap().ensure_webhook(stripe, URL)
+
+    assert endpoint_id == "we_new"
+    assert secret == "whsec_fresh", "the caller needs the secret Stripe only returns once"
+    assert sorted(stripe.WebhookEndpoint.created[0]["enabled_events"]) == sorted(HANDLED)
+
+
+def test_an_existing_webhook_is_left_alone_and_reports_no_secret():
+    """Stripe hands back a signing secret only at creation.
+
+    Rolling it would break the running deployment until the new value is
+    set, so a re-run must not do that on its own — and must not pretend it
+    has a secret to offer.
+    """
+    from app.routers.stripe_webhooks import HANDLED
+
+    stripe = _StubStripe([{"id": "we_old", "url": URL, "enabled_events": sorted(HANDLED)}])
+    endpoint_id, secret = _bootstrap().ensure_webhook(stripe, URL)
+
+    assert endpoint_id == "we_old"
+    assert secret is None
+    assert stripe.WebhookEndpoint.created == []
+    assert stripe.WebhookEndpoint.modified == []
+
+
+def test_an_existing_webhook_gains_events_added_since_it_was_made():
+    """Adding a handler must not mean the endpoint quietly ignores it."""
+    from app.routers.stripe_webhooks import HANDLED
+
+    stale = sorted(HANDLED - {"charge.dispute.created"})
+    stripe = _StubStripe([{"id": "we_old", "url": URL, "enabled_events": stale}])
+    _bootstrap().ensure_webhook(stripe, URL)
+
+    assert stripe.WebhookEndpoint.modified, "the endpoint was left short of an event"
+    _, events = stripe.WebhookEndpoint.modified[0]
+    assert sorted(events) == sorted(HANDLED)
+
+
+def test_a_webhook_for_another_url_is_not_mistaken_for_ours():
+    """Two deployments against one Stripe account is normal."""
+    from app.routers.stripe_webhooks import HANDLED
+
+    other = {"id": "we_staging", "url": "https://other.example/v1/stripe/webhook",
+             "enabled_events": sorted(HANDLED)}
+    stripe = _StubStripe([other])
+    endpoint_id, secret = _bootstrap().ensure_webhook(stripe, URL)
+
+    assert endpoint_id == "we_new" and secret == "whsec_fresh"
+    assert stripe.WebhookEndpoint.modified == [], "it modified another deployment's endpoint"

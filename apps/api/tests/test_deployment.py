@@ -280,3 +280,43 @@ def test_the_auth_check_knows_the_algorithms_the_api_accepts():
         "the check distinguishes an unknown signing key from a bad signature by "
         "the message; swallowing it makes a project mismatch indistinguishable"
     )
+
+
+def test_stripe_is_never_a_side_effect_of_shipping():
+    """`everything` must not create objects in somebody's Stripe account.
+
+    The stage writes to a third party and turns on charging. It is opt-in,
+    by name, with its own confirmation for a live key — a deploy that also
+    did this would be a deploy nobody could safely re-run.
+    """
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    job = workflow["jobs"]["stripe"]
+
+    # The condition itself, not the prose around it: the comment above the
+    # stage says the word "everything" precisely to explain this rule.
+    condition = str(job["if"])
+    assert "inputs.stage == 'stripe'" in condition
+    assert "everything" not in condition, "the stripe stage must not run as part of everything"
+
+    steps = yaml.dump(job["steps"])
+    assert "confirm_live" in steps, "a live key must require explicit confirmation"
+    assert "sk_live_" in steps, "nothing distinguishes a live key from a test key"
+
+
+def test_payments_are_observable_from_outside():
+    """Otherwise "payments are on" is a claim nobody can check.
+
+    /v1/plans is served from the catalogue and reads identically whether or
+    not Stripe is configured, so it cannot answer this. The verification
+    script reads the flag that can.
+    """
+    from app.main import limits
+
+    assert "payments_enabled" in limits(), "/v1/limits must report whether it can charge"
+    script = (ROOT / "scripts/verify_payments.py").read_text()
+    assert "payments_enabled" in script
+    assert "scripts/verify_payments.py" in (
+        ROOT / ".github/workflows/verify-site.yml"
+    ).read_text(), "the payments check must be runnable without a terminal"
