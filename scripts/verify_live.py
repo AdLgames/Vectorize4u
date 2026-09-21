@@ -54,13 +54,27 @@ def _request(
     request = urllib.request.Request(url, data=body, method=method)
     for name, value in (headers or {}).items():
         request.add_header(name, value)
+    # Header names are case-insensitive and every server picks its own
+    # spelling, so they are lowercased here rather than at each call site.
+    # A caller looking up "access-control-allow-origin" against R2's
+    # "Access-Control-Allow-Origin" gets None and reports the bucket as
+    # misconfigured — which is exactly what this script did, against a
+    # bucket whose policy was correct and whose browser uploads worked.
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, response.read(), dict(response.headers)
+            return (
+                response.status,
+                response.read(),
+                {k.lower(): v for k, v in response.headers.items()},
+            )
     except urllib.error.HTTPError as error:
         # An error body is the most useful thing on the screen; the API
         # answers problem+json (§6), so keep it rather than raising bare.
-        return error.code, error.read(), dict(error.headers or {})
+        return (
+            error.code,
+            error.read(),
+            {k.lower(): v for k, v in (error.headers or {}).items()},
+        )
 
 
 def _json(method: str, url: str, payload: dict | None = None) -> tuple[int, dict]:

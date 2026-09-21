@@ -377,3 +377,44 @@ def test_the_bucket_lets_a_browser_upload():
     live = (ROOT / "scripts/verify_live.py").read_text()
     assert "Access-Control-Request-Method" in live
     assert "access-control-allow-origin" in live
+
+
+def test_the_live_check_reads_headers_case_insensitively():
+    """A false negative here is worse than no check at all.
+
+    The preflight probe looked up "access-control-allow-origin" against a
+    dict keyed by R2's own "Access-Control-Allow-Origin", so it reported
+    every correctly configured bucket as broken. It failed a deploy whose
+    bucket policy was right and whose browser uploads were working, and
+    the message it printed sent the reader to fix infrastructure that had
+    nothing wrong with it.
+    """
+    import importlib.util
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_OPTIONS(self):  # noqa: N802 - the stdlib's spelling
+            self.send_response(204)
+            # Exactly R2's casing, which is not the caller's.
+            self.send_header("Access-Control-Allow-Origin", "https://example.test")
+            self.send_header("Access-Control-Allow-Methods", "PUT, GET, HEAD")
+            self.end_headers()
+
+        def log_message(self, *args):  # noqa: A002
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=server.handle_request, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/object"
+
+    spec = importlib.util.spec_from_file_location(
+        "verify_live", ROOT / "scripts/verify_live.py"
+    )
+    assert spec and spec.loader
+    verify_live = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verify_live)
+
+    # Must not raise: the bucket in this test is configured correctly.
+    verify_live._browser_may_upload(url, "https://example.test")
+    server.server_close()
