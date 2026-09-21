@@ -58,6 +58,35 @@ nowhere**: not here, not on Fly, not into a chat window. Nothing in this
 repository reads it. It bypasses every row-level policy, and
 `NEXT_PUBLIC_` means "compiled into JavaScript anyone can read".
 
+### Sign-in needs three more things set, in three different places
+
+Sign-in is a magic link (§7), and it spans the project, the site and the
+API. Each is configured separately, and every mismatch has the same
+symptom: anonymous previews keep working, every signed-in request answers
+401, and nothing logs why.
+
+1. **Supabase → Authentication → URL Configuration.** Set the Site URL to
+   your site, and add `<your site>/auth/callback` to the redirect
+   allowlist. `AuthProvider` asks for a link back to
+   `${window.location.origin}/auth/callback`, and a redirect that is not
+   on the list is not honoured — the link arrives and lands in the wrong
+   place, so the code is never exchanged for a session. This is the one
+   part no check can see from outside.
+2. **Supabase → Authentication → JWT Keys**, below.
+3. **The API's `VEC_SUPABASE_URL`**, from the `SUPABASE_URL` repository
+   secret via the `secrets` stage. It drives both the JWKS endpoint and
+   the expected issuer, so it has to be the same project, exactly. Staged
+   secrets only reach the machines on a deploy, so run `deploy` after
+   `secrets`.
+
+Then check the lot from Actions → **Verify the site**, filling in the
+`supabase` input. It reads the project's JWKS and settings, confirms the
+site's bundle names the project, and proves the API trusts *this*
+project's signing keys by offering it a token carrying a real key id and
+a deliberately broken signature. Nothing is emailed: a real magic-link
+round trip would need an inbox and would exhaust the project's email rate
+limit.
+
 Check **Authentication → JWT Keys** in the same dashboard while you are
 there. `app/config.py` derives the JWKS endpoint from the project URL
 (`/auth/v1/.well-known/jwks.json`), which is where *asymmetric* signing

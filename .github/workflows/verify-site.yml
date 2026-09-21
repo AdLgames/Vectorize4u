@@ -24,6 +24,15 @@ on:
         required: true
         type: string
         default: https://vectorize4u-api.fly.dev
+      supabase:
+        description: >-
+          The Supabase project URL, to also check sign-in. Leave it empty to
+          check only the site. Nothing is emailed either way: the sign-in
+          check is read-only, because a real magic-link round trip needs an
+          inbox and burns the project's email rate limit.
+        required: false
+        type: string
+        default: ""
 
 jobs:
   site:
@@ -37,6 +46,15 @@ jobs:
       - name: Is the site wired to the live API
         run: |
           python scripts/verify_site.py "${{ inputs.site }}" --api "${{ inputs.api }}"
+
+      # Separate from the site check because the causes are separate: the
+      # site can be perfectly wired to the API while sign-in is broken by a
+      # project that still signs with the legacy shared secret.
+      - name: Is sign-in wired to the same Supabase project
+        if: inputs.supabase != ''
+        run: |
+          python scripts/verify_auth.py "${{ inputs.site }}" \
+            --api "${{ inputs.api }}" --supabase "${{ inputs.supabase }}"
 
       - name: What to change if that failed
         if: failure()

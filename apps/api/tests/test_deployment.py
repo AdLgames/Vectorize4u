@@ -255,3 +255,28 @@ def test_the_site_check_guards_the_two_baked_in_variables():
     assert site_default.group(1).split("//")[-1] in script, (
         "next.config.ts falls back to a placeholder domain the check does not look for"
     )
+
+
+def test_the_auth_check_knows_the_algorithms_the_api_accepts():
+    """The sign-in check is only as good as its agreement with auth.py.
+
+    It reads a project's JWKS and picks a key the API would actually use.
+    If `auth.py` stopped accepting one of those algorithms, or started
+    accepting another, a project the API cannot verify would still pass.
+    """
+    from app.auth import ASYMMETRIC_ALGORITHMS
+
+    script = (ROOT / "scripts/verify_auth.py").read_text()
+    for algorithm in ASYMMETRIC_ALGORITHMS:
+        assert algorithm in script, (
+            f"auth.py verifies {algorithm} but the check does not look for it"
+        )
+
+    # The probe depends on the reason reaching the client: auth.py wraps a
+    # verification failure as "invalid token: {exc}", and the check reads
+    # that text to tell a wrong project from a bad signature.
+    auth = (ROOT / "apps/api/app/auth.py").read_text()
+    assert 'unauthorized(f"invalid token: {exc}")' in auth, (
+        "the check distinguishes an unknown signing key from a bad signature by "
+        "the message; swallowing it makes a project mismatch indistinguishable"
+    )
