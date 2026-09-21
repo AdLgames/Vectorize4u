@@ -33,11 +33,13 @@ export function useCheckout() {
       } catch (err) {
         setBusy(null);
         setError(
-          err instanceof ApiError && err.problem.error_code === "billing_unavailable"
-            ? "Payments aren't switched on yet. Nothing was charged."
-            : err instanceof ApiError
-              ? err.problem.detail
-              : "Couldn't start checkout.",
+          // `billing_unavailable` covers two different things: payments
+          // genuinely off, and Stripe refusing the request. The second
+          // carries the reason, and it is usually the whole fix, so the
+          // reassuring sentence is only for the case with nothing to say.
+          err instanceof ApiError
+            ? err.problem.detail || "Payments aren't switched on yet. Nothing was charged."
+            : `Couldn't start checkout. ${err instanceof Error ? err.message : ""}`.trim(),
         );
       }
     },

@@ -29,7 +29,25 @@ log = logging.getLogger("vectorize.api.billing")
 
 
 class BillingUnavailable(Exception):
-    """Stripe is not configured. A 503, not a 500: nothing is broken."""
+    """Stripe is not configured, or refused the request.
+
+    A 503, not a 500: nothing here is broken, something upstream is not
+    ready. Stripe's own rejections belong in this class too — they are
+    almost always account configuration ("you have not enabled Stripe
+    Tax"), and letting one escape as an unhandled 500 replaced an
+    actionable sentence with "an internal error occurred".
+    """
+
+
+def _stripe_error(exc: Exception) -> BillingUnavailable:
+    """Stripe's message, which is written for the account holder.
+
+    Not an internal detail: these say things like "You cannot use
+    automatic_tax[enabled]=true because you have not enabled Stripe Tax",
+    which is the entire fix. Hiding it leaves the owner with nothing.
+    """
+    message = getattr(exc, "user_message", None) or str(exc)
+    return BillingUnavailable(f"Stripe refused this: {message}")
 
 
 @dataclass(frozen=True)
@@ -77,13 +95,17 @@ def ensure_customer(session: Session, user: User) -> str:
         return user.stripe_customer_id
 
     stripe = _client()
-    customer = stripe.Customer.create(
-        email=user.email,
-        metadata={"user_id": user.id},
-        # Stripe Tax needs somewhere to start; it refines this from the
-        # address collected at checkout.
-        tax={"validate_location": "deferred"},
-    )
+    try:
+        customer = stripe.Customer.create(
+            email=user.email,
+            metadata={"user_id": user.id},
+            # Stripe Tax needs somewhere to start; it refines this from the
+            # address collected at checkout.
+            tax={"validate_location": "deferred"},
+        )
+    except Exception as exc:  # noqa: BLE001 - a 503, like every other Stripe refusal
+        log.warning("could not create a Stripe customer for %s: %s", user.id, exc)
+        raise _stripe_error(exc) from exc
     user.stripe_customer_id = customer["id"]
     session.flush()
     return str(customer["id"])
@@ -128,11 +150,15 @@ def create_checkout_session(
     else:
         params["payment_intent_data"] = {"metadata": metadata}
 
-    created = stripe.checkout.Session.create(
-        **params,
-        # A double-clicked button must not create two checkouts.
-        idempotency_key=idempotency_key,
-    )
+    try:
+        created = stripe.checkout.Session.create(
+            **params,
+            # A double-clicked button must not create two checkouts.
+            idempotency_key=idempotency_key,
+        )
+    except Exception as exc:  # noqa: BLE001 - every Stripe failure is a 503 here
+        log.warning("checkout session refused for user %s: %s", user.id, exc)
+        raise _stripe_error(exc) from exc
     log.info("checkout session %s for user %s plan %s", created["id"], user.id, item.id)
     return CheckoutSession(id=str(created["id"]), url=str(created["url"]))
 
@@ -145,7 +171,11 @@ def create_portal_session(session: Session, user: User, *, return_url: str) -> s
     """
     stripe = _client()
     customer_id = ensure_customer(session, user)
-    portal = stripe.billing_portal.Session.create(
-        customer=customer_id, return_url=return_url
-    )
+    try:
+        portal = stripe.billing_portal.Session.create(customer=customer_id, return_url=return_url)
+    except Exception as exc:  # noqa: BLE001
+        # The portal has its own configuration step in the dashboard, and
+        # says so when it is missing. That sentence is the fix.
+        log.warning("billing portal refused for user %s: %s", user.id, exc)
+        raise _stripe_error(exc) from exc
     return str(portal["url"])

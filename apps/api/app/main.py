@@ -55,9 +55,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# One list, used by the middleware *and* by the error handlers below. They
+# have to agree: a response that skips the middleware still has to carry
+# the same policy, or the browser discards it.
+ALLOWED_ORIGINS = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,16 +109,41 @@ async def _rate_limit_headers(request: Request, call_next):  # type: ignore[no-u
     return response
 
 
+def _with_cors(request: Request, response: JSONResponse) -> JSONResponse:
+    """Put the CORS headers on a response the CORS middleware never sees.
+
+    Starlette runs the handler for an unhandled exception from
+    ServerErrorMiddleware, which sits *outside* CORSMiddleware — so a 500
+    goes back with no Access-Control-Allow-Origin. The browser then
+    discards it and `fetch` rejects, which reaches the app as a network
+    failure with no status and no body: the server's careful problem+json
+    explaining what went wrong is thrown away by the browser before any
+    code can read it. Every error looked like "something went wrong".
+    """
+    origin = request.headers.get("origin")
+    if not origin:
+        return response
+    if "*" in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    elif origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    return response
+
+
 @app.exception_handler(HTTPException)
 async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
-    return errors.http_exception_response(request, exc)
+    return _with_cors(request, errors.http_exception_response(request, exc))
 
 
 @app.exception_handler(Exception)
 async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     # Never leak an internal message to the caller; Sentry gets the trace.
     log.exception("unhandled error on %s", request.url.path)
-    return errors.problem_response(request, errors.internal(detail="an internal error occurred"))
+    return _with_cors(
+        request,
+        errors.problem_response(request, errors.internal(detail="an internal error occurred")),
+    )
 
 
 @app.get("/health")

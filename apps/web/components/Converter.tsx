@@ -120,7 +120,10 @@ export default function Converter({
         setMessage(
           error instanceof ApiError
             ? errorCopy(error.problem.error_code, error.problem.detail)
-            : "Something went wrong. Please try again.",
+            : // Not an ApiError at all, so there is no code to look up.
+              // Saying what actually happened beats a shrug: this is the
+              // message that hid a bucket with no CORS policy for a day.
+              `Something went wrong. ${error instanceof Error ? error.message : ""}`.trim(),
         );
       }
     },
@@ -417,6 +420,13 @@ function errorCopy(code: string | null, fallback?: string): string {
         "That image is past our limits — 25 MB, and 8000 px on the longest side. " +
           "Scaling it down a little will do it."
       );
+    case "upload_blocked":
+      return (
+        fallback ??
+        "The browser couldn't send your file to storage. That is our configuration, not your file."
+      );
+    case "unreachable":
+      return fallback ?? "We couldn't reach the server. Check your connection and try again.";
     case "unsafe_url":
       return "That URL can't be fetched.";
     case "tracer_crash":

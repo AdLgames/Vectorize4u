@@ -47,14 +47,32 @@ async function request<T>(
   init: RequestInit & { token?: string | null } = {},
 ): Promise<{ data: T; response: Response }> {
   const { token, headers, ...rest } = init;
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...rest,
-    headers: {
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      headers: {
+        ...(rest.body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(headers ?? {}),
+      },
+    });
+  } catch (cause) {
+    // `fetch` *rejects* — as opposed to resolving with a bad status — when
+    // the request never completed: offline, DNS, or a CORS rule that made
+    // the browser discard the response. There is no status and no body,
+    // and an unhandled rejection reaches the UI as whatever generic
+    // sentence that screen happens to end with. Naming it is the
+    // difference between "something went wrong" and a fix.
+    throw new ApiError({
+      error_code: "unreachable",
+      detail:
+        `Could not reach ${API_BASE}. The request was not completed, so there is ` +
+        `no reply to read: check the connection, or the API's CORS policy. ` +
+        `(${cause instanceof Error ? cause.message : String(cause)})`,
+      status: 0,
+    });
+  }
 
   if (!response.ok) {
     let problem: Problem = {
@@ -102,11 +120,27 @@ export async function putToStorage(
   headers: Record<string, string>,
 ): Promise<void> {
   const absolute = putUrl.startsWith("http") ? putUrl : `${API_BASE}${putUrl}`;
-  const response = await fetch(absolute, {
-    method: "PUT",
-    body: file,
-    headers: { "Content-Type": headers["Content-Type"] ?? file.type },
-  });
+  let response: Response;
+  try {
+    response = await fetch(absolute, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": headers["Content-Type"] ?? file.type },
+    });
+  } catch (cause) {
+    // The upload goes straight to the bucket (§4.3), so this rejects when
+    // the *bucket* has no CORS policy for this site — the browser refuses
+    // to send it and nothing reaches any log. Every file fails, whatever
+    // its size or format, which is exactly what it looked like.
+    throw new ApiError({
+      error_code: "upload_blocked",
+      detail:
+        "The browser could not send the file to storage. This is normally the " +
+        "bucket's CORS policy rather than the file. " +
+        `(${cause instanceof Error ? cause.message : String(cause)})`,
+      status: 0,
+    });
+  }
   if (!response.ok) {
     throw new ApiError({
       error_code: "upload_failed",
