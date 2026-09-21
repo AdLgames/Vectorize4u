@@ -6,7 +6,8 @@
 # chat window or a developer's shell history.
 #
 # The stages are separate on purpose: `bootstrap` creates things and is
-# safe to re-run, `secrets` writes configuration, `deploy` ships code.
+# safe to re-run, `secrets` writes configuration, `deploy` ships code, and
+# `verify` converts a real image against whatever is already live.
 # Running them out of order fails loudly rather than half-deploying.
 
 name: Deploy
@@ -23,6 +24,7 @@ on:
           - bootstrap
           - secrets
           - deploy
+          - verify
           - everything
       region:
         description: Fly region — all apps and the database must share one
@@ -390,3 +392,39 @@ jobs:
           done
           echo "the API never answered /health — check: flyctl logs -a $API_APP"
           exit 1
+
+  verify:
+    needs: [deploy]
+    if: >-
+      always()
+      && (inputs.stage == 'deploy' || inputs.stage == 'verify' || inputs.stage == 'everything')
+      && (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # /health proves the API process booted and nothing else. This walks
+      # the anonymous preview path — presigned PUT to R2, a job through the
+      # broker, a tracer subprocess in the worker image, an SVG back — so a
+      # green run means the stack converts images, not that it starts.
+      #
+      # It is its own stage as well as the tail of `deploy` because the
+      # useful question after a config change is "does it still work?",
+      # and answering that should not require shipping code again.
+      - name: Convert an image end to end
+        run: python scripts/verify_live.py "https://${API_APP}.fly.dev"
+
+      - name: Where to look if that failed
+        if: failure()
+        run: |
+          echo "API logs:    flyctl logs -a $API_APP"
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            echo "worker logs: flyctl logs -a ${{ inputs.prefix }}-worker"
+          else
+            echo "worker logs: flyctl logs -a ${{ inputs.prefix }}-worker-preview"
+          fi
+          echo "a job stuck in 'queued' is the worker or the broker;"
+          echo "a rejected presigned PUT is VEC_R2_* on the API app."

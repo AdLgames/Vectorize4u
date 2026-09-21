@@ -58,7 +58,7 @@ Use the workflow below instead.
 
 **Actions → Deploy → Run workflow.** It asks for a region, an
 organisation and a name prefix — the defaults are already the ones this
-account uses. Three stages, in order, because they fail differently and
+account uses. Four stages, in order, because they fail differently and
 you want to know which one broke:
 
 1. **`bootstrap`** — creates the five apps, the Postgres cluster and the
@@ -68,8 +68,19 @@ you want to know which one broke:
 3. **`deploy`** — builds both images, ships the API (running
    `alembic upgrade head` as its release command) and the three worker
    lanes, then curls `/health` and fails if it does not answer.
+4. **`verify`** — converts a real image end to end against whatever is
+   live: `scripts/verify_live.py` asks for an upload slot, PUTs the bytes
+   to R2, starts an anonymous preview, waits for the job and fetches the
+   watermarked tile. It runs automatically at the end of `deploy`, and is
+   selectable on its own because the question after a settings change is
+   "does it still work?" and answering that should not need a redeploy.
 
-`everything` runs all three in sequence. Prefer the stages the first time.
+`everything` runs all four in sequence. Prefer the stages the first time.
+
+`/health` is a much weaker claim than it looks: it answers before the
+worker has consumed a job, before R2 has accepted a byte and before any
+tracer binary has been exec'd. `verify` is the stage that fails when one
+of those is wrong, and it names which one.
 
 ## Then: payments, later
 
@@ -100,6 +111,11 @@ likely failures:
   library in `infra/Dockerfile.worker`. The log names it.
 - **The API boots and dies.** Its startup check lists every missing or
   unsafe setting at once — that message is the checklist, not a puzzle.
+- **`verify` hangs with the job in `queued`.** Nothing is consuming
+  `queue_preview`: either the worker app has no running machine, or it
+  cannot reach Redis. `flyctl logs -a <prefix>-worker`.
+- **`verify` fails on the presigned PUT.** The R2 credentials or the
+  bucket name, not the code. Re-run `secrets` after fixing them.
 
 `flyctl logs -a vectorize-api` is the follow-up, and fly.io's dashboard
 shows the same logs in a browser.

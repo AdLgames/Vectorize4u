@@ -37,7 +37,7 @@ test-api: ## run the service test suite (the real engine runs inside it)
 	cd apps/api && ../../$(PY) -m pytest tests -q
 
 lint: ## ruff
-	$(PY) -m ruff check $(ENGINE) benchmarks apps/api apps/worker
+	$(PY) -m ruff check $(ENGINE) benchmarks apps/api apps/worker scripts
 
 types: ## regenerate packages/shared/types.ts from the OpenAPI schema
 	$(PY) packages/shared/generate.py
