@@ -436,7 +436,74 @@ jobs:
       - name: What the machines are actually doing
         if: failure()
         run: |
+          # The stage that fails has to reach the verdict itself. Collapsed log
+          # groups are unreadable on the phone this whole workflow exists for, so
+          # the evidence is still collected below, but the conclusion is printed
+          # first, unwrapped, in the few lines worth screenshotting.
           set -u
+
+          # The preview lane is the one the verification uses, so it is the one
+          # whose silence matters.
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            LANE_APP="${{ inputs.prefix }}-worker"
+          else
+            LANE_APP="${{ inputs.prefix }}-worker-preview"
+          fi
+
+          machines="$(flyctl machine list -a "$LANE_APP" --json 2>/dev/null || echo '[]')"
+          total="$(echo "$machines" | jq 'length' 2>/dev/null || echo 0)"
+          started="$(echo "$machines" | jq '[.[] | select(.state == "started")] | length' 2>/dev/null || echo 0)"
+          logs="$(flyctl logs -a "$LANE_APP" --no-tail 2>&1 | tail -300 || true)"
+
+          signal() { echo "$logs" | grep -c "$1" 2>/dev/null || true; }
+          ready="$(signal 'celery@')"
+          refused="$(signal 'Cannot connect to redis')"
+          crashed="$(signal 'Traceback')"
+          unsafe="$(signal 'unsafe configuration')"
+          consumed="$(signal 'Received task')"
+
+          echo "=============================================================="
+          echo " $LANE_APP: $total machine(s), $started started"
+          echo " log signals: celery-banner=$ready broker-refused=$refused"
+          echo "              traceback=$crashed unsafe-config=$unsafe received-task=$consumed"
+          echo "--------------------------------------------------------------"
+          if [ "$total" = "0" ]; then
+            echo " VERDICT: the app has no machines at all. The deploy never placed"
+            echo "          one, or it was destroyed. Re-run the deploy stage."
+          elif [ "$started" = "0" ]; then
+            echo " VERDICT: machines exist but none is started, so nothing is"
+            echo "          consuming the lane. States above; start them with"
+            echo "          flyctl machine start -a $LANE_APP"
+          elif [ "$unsafe" != "0" ]; then
+            echo " VERDICT: the startup check refused the configuration. The line"
+            echo "          beginning 'unsafe configuration:' names every problem."
+          elif [ "$refused" != "0" ]; then
+            echo " VERDICT: the worker is running but cannot reach the broker at"
+            echo "          ${REDIS_APP}.internal:6379. Celery retries a hundred"
+            echo "          times without exiting, which is why the machine looks"
+            echo "          healthy while the queue never drains. Check that"
+            echo "          $REDIS_APP has a started machine, and that"
+            echo "          VEC_REDIS_URL is set on $LANE_APP."
+          elif [ "$crashed" != "0" ]; then
+            echo " VERDICT: the worker is raising on boot. The traceback is in the"
+            echo "          log group below."
+          elif [ "$ready" = "0" ]; then
+            echo " VERDICT: the machine is up but Celery never printed its banner,"
+            echo "          so the process is not the worker or it dies before"
+            echo "          logging. Check the log group below."
+          elif [ "$consumed" = "0" ]; then
+            echo " VERDICT: Celery started and connected, but received no task."
+            echo "          The API published to a queue this worker is not"
+            echo "          consuming, or to a different broker. Compare"
+            echo "          VEC_REDIS_URL on $LANE_APP and $API_APP, and check"
+            echo "          QUEUES includes queue_preview."
+          else
+            echo " VERDICT: the worker did receive tasks. The failure is inside the"
+            echo "          job, not in delivery — see the log group below."
+          fi
+          echo "=============================================================="
+          echo
+
           for app in $WORKER_APPS "$REDIS_APP" "$API_APP"; do
             echo "::group::$app — machines"
             flyctl machine list -a "$app" || true
@@ -445,20 +512,9 @@ jobs:
           for app in $WORKER_APPS "$API_APP"; do
             echo "::group::$app — configured secrets (names only)"
             # `secrets list` prints names and digests, never values.
-            # Whether VEC_REDIS_URL and DATABASE_URL reached the worker at
-            # all is the first thing worth knowing.
             flyctl secrets list -a "$app" || true
             echo "::endgroup::"
             echo "::group::$app — recent logs"
             flyctl logs -a "$app" --no-tail 2>&1 | tail -80 || true
             echo "::endgroup::"
           done
-          echo
-          echo "Reading this:"
-          echo " * no machines at all, or every one 'stopped'  -> nothing is"
-          echo "   consuming the lane. The deploy created it; something stopped it."
-          echo " * a machine that restarts over and over       -> it is crashing on"
-          echo "   boot. The last lines before each restart say why, and a missing"
-          echo "   or unsafe setting is listed in full by the startup check."
-          echo " * a running machine with no 'celery@... ready' line -> it cannot"
-          echo "   reach the broker at $REDIS_APP.internal:6379."
