@@ -208,11 +208,24 @@ jobs:
           if [ -n "$wired" ]; then
             echo "every app already points at the $SHARED_DB database"
           else
-            # Detach first: an app attached to its own database holds a
-            # DATABASE_URL that must not survive this. Detaching drops that
-            # app's generated user and its secret; $SHARED_DB is untouched.
+            # Attach refuses while the app still holds the DATABASE_URL from
+            # its old per-app attachment — "consumer app ... already contains
+            # a secret named DATABASE_URL". `postgres detach` is the
+            # documented way to clear that and it silently did not work here,
+            # which cost a run of this stage precisely because its output went
+            # to /dev/null. Removing the secret is one command that either
+            # works or says why.
+            #
+            # The old per-app databases and users are left behind on purpose.
+            # They hold nothing, nothing points at them any more, and dropping
+            # a database to tidy up is not a thing this workflow should do
+            # unattended.
             for app in "$API_APP" $WORKER_APPS; do
-              flyctl postgres detach "$DB_APP" -a "$app" --yes > /dev/null 2>&1 || true
+              if flyctl secrets unset DATABASE_URL -a "$app" --stage 2>&1 | tail -1; then
+                echo "  cleared the old DATABASE_URL on $app"
+              else
+                echo "  $app had no DATABASE_URL to clear"
+              fi
             done
 
             attach="$(flyctl postgres attach "$DB_APP" -a "$API_APP" \
@@ -221,13 +234,21 @@ jobs:
             # That output carries the password, so it is never printed raw.
             echo "$attach" | sed -E 's#postgres://[^[:space:]]+#postgres://<redacted>#g'
 
-            url="$(printf '%s' "$attach" | grep -oE 'postgres://[^[:space:]"]+' | head -1)"
+            # `|| true` is load-bearing: pipefail is on, so a grep that
+            # matches nothing fails the pipeline and, under the -e that
+            # Actions runs steps with, kills the step here — printing a bare
+            # "exit code 1" instead of the explanation directly below it.
+            url="$(printf '%s' "$attach" | grep -oE 'postgres://[^[:space:]"]+' | head -1 || true)"
             if [ -z "$url" ]; then
               echo
               echo "The attach printed no connection string, so the workers cannot be"
-              echo "given one. If it says the user or the database already exists, the"
-              echo "detach above did not take: remove VEC_DB_SHARED from every app and"
-              echo "run this stage again."
+              echo "given one. The redacted output above says why. Two common ones:"
+              echo
+              echo " * 'already contains a secret named DATABASE_URL' — an app still"
+              echo "   holds its old per-app attachment. Clearing it is the step just"
+              echo "   above; if that failed, it said so."
+              echo " * 'database $SHARED_DB already exists' — a previous run got part"
+              echo "   of the way. Drop that database, or pick another SHARED_DB."
               exit 1
             fi
 
