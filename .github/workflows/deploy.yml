@@ -402,9 +402,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Which worker apps this shape needs
+        run: |
+          if [ "${{ inputs.lanes }}" = "single" ]; then
+            echo "WORKER_APPS=${{ inputs.prefix }}-worker" >> "$GITHUB_ENV"
+          else
+            names="${{ inputs.prefix }}-worker-preview"
+            names="$names ${{ inputs.prefix }}-worker-sync"
+            names="$names ${{ inputs.prefix }}-worker-batch"
+            echo "WORKER_APPS=$names" >> "$GITHUB_ENV"
+          fi
 
       # /health proves the API process booted and nothing else. This walks
       # the anonymous preview path — presigned PUT to R2, a job through the
@@ -417,14 +429,36 @@ jobs:
       - name: Convert an image end to end
         run: python scripts/verify_live.py "https://${API_APP}.fly.dev"
 
-      - name: Where to look if that failed
+      # Printing the commands to run next is no use to someone holding a
+      # phone. The evidence that names the cause — is there a machine, is
+      # it running, and what did it say before it stopped — is three
+      # flyctl calls, so make the failing run carry it.
+      - name: What the machines are actually doing
         if: failure()
         run: |
-          echo "API logs:    flyctl logs -a $API_APP"
-          if [ "${{ inputs.lanes }}" = "single" ]; then
-            echo "worker logs: flyctl logs -a ${{ inputs.prefix }}-worker"
-          else
-            echo "worker logs: flyctl logs -a ${{ inputs.prefix }}-worker-preview"
-          fi
-          echo "a job stuck in 'queued' is the worker or the broker;"
-          echo "a rejected presigned PUT is VEC_R2_* on the API app."
+          set -u
+          for app in $WORKER_APPS "$REDIS_APP" "$API_APP"; do
+            echo "::group::$app — machines"
+            flyctl machine list -a "$app" || true
+            echo "::endgroup::"
+          done
+          for app in $WORKER_APPS "$API_APP"; do
+            echo "::group::$app — configured secrets (names only)"
+            # `secrets list` prints names and digests, never values.
+            # Whether VEC_REDIS_URL and DATABASE_URL reached the worker at
+            # all is the first thing worth knowing.
+            flyctl secrets list -a "$app" || true
+            echo "::endgroup::"
+            echo "::group::$app — recent logs"
+            flyctl logs -a "$app" --no-tail 2>&1 | tail -80 || true
+            echo "::endgroup::"
+          done
+          echo
+          echo "Reading this:"
+          echo " * no machines at all, or every one 'stopped'  -> nothing is"
+          echo "   consuming the lane. The deploy created it; something stopped it."
+          echo " * a machine that restarts over and over       -> it is crashing on"
+          echo "   boot. The last lines before each restart say why, and a missing"
+          echo "   or unsafe setting is listed in full by the startup check."
+          echo " * a running machine with no 'celery@... ready' line -> it cannot"
+          echo "   reach the broker at $REDIS_APP.internal:6379."
