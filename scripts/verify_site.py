@@ -68,26 +68,73 @@ def _get(
         raise StepFailed(f"GET {url} did not connect: {error.reason}")
 
 
+def _title(html: str) -> str:
+    found = re.search(r"<title[^>]*>([^<]*)</title>", html, re.IGNORECASE)
+    return found.group(1).strip() if found else "(none)"
+
+
+def _interstitial(html: str, headers: dict[str, str]) -> str | None:
+    """Name the wall in front of the site, if there is one.
+
+    A protected Vercel deployment answers *every* path with a sign-in page,
+    including /sitemap.xml, and can do it with a 200. Every check below
+    then reads that page instead of the site and reports something
+    misleading about the app, which is worse than reporting nothing.
+    """
+    if "_vercel_sso_nonce" in headers.get("set-cookie", ""):
+        return "Vercel deployment protection (SSO cookie)"
+    for marker in (
+        "_vercel/sso",
+        "vercel.com/sso",
+        "sso-api",
+        "Authentication Required",
+    ):
+        if marker in html:
+            return f"Vercel deployment protection ({marker})"
+    if "Password Protection" in html or "password-protection" in html:
+        return "Vercel password protection"
+    return None
+
+
 def home(site: str) -> str:
-    status, raw, _ = _get(site + "/")
+    status, raw, headers = _get(site + "/")
     if status != 200:
         raise StepFailed(f"GET / answered {status}")
     html = raw.decode("utf-8", "replace")
     if "<title" not in html:
         raise StepFailed("the home page has no <title>, so it is not the app")
-    print(f"  home        ok  ({len(raw)} bytes)")
+
+    wall = _interstitial(html, headers)
+    if wall:
+        raise StepFailed(
+            f"this URL is behind {wall}, so nothing here is the app — the page "
+            f"titled {_title(html)!r} is served for every path, /sitemap.xml "
+            "included.\n"
+            "      Either check the *production* URL (Vercel's Domains page "
+            "lists it; protection normally covers previews only), or turn the "
+            "protection off under Settings -> Deployment Protection."
+        )
+    print(f"  home        ok  ({len(raw)} bytes, title {_title(html)!r})")
     return html
 
 
 def sitemap(site: str) -> list[str]:
-    status, raw, _ = _get(site + "/sitemap.xml")
+    status, raw, headers = _get(site + "/sitemap.xml")
     if status != 200:
         raise StepFailed(f"GET /sitemap.xml answered {status}")
-    locations = re.findall(
-        r"<loc>\s*([^<\s]+)\s*</loc>", raw.decode("utf-8", "replace")
-    )
+    body = raw.decode("utf-8", "replace")
+    locations = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body)
     if not locations:
-        raise StepFailed("the sitemap lists no URLs")
+        wall = _interstitial(body, headers)
+        raise StepFailed(
+            "the sitemap lists no URLs. "
+            + (
+                f"It is {wall}, not a sitemap."
+                if wall
+                else f"content-type {headers.get('content-type', '(none)')!r}, "
+                f"{len(raw)} bytes, starting: {body[:180]!r}"
+            )
+        )
 
     if any(PLACEHOLDER_SITE in url for url in locations):
         raise StepFailed(
