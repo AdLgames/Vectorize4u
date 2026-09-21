@@ -450,3 +450,73 @@ def test_production_still_refuses_a_test_key():
     )
     with pytest.raises(RuntimeError, match="test key"):
         settings.check()
+
+
+# -- what the browser is actually able to read ------------------------------
+
+
+def test_an_unhandled_error_still_carries_cors_headers(tmp_env):
+    """Otherwise the browser discards the response and JS sees nothing.
+
+    Starlette serves the handler for an unhandled exception from
+    ServerErrorMiddleware, which sits outside CORSMiddleware, so the 500
+    goes back without Access-Control-Allow-Origin. The browser then throws
+    the whole response away — status, problem+json and all — and `fetch`
+    rejects as if the network had failed. Every server error reached the
+    site as "something went wrong".
+    """
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    @app.get("/v1/_boom_for_test")
+    def _boom() -> None:
+        raise RuntimeError("something the caller must never see")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/_boom_for_test", headers={"Origin": "https://vectorize4u.vercel.app"}
+        )
+
+    assert response.status_code == 500
+    assert response.headers.get("access-control-allow-origin") == "*", (
+        "the browser cannot read this response, so the error never reaches the app"
+    )
+    # And still says nothing about the internals.
+    assert "must never see" not in response.text
+
+
+def test_a_stripe_refusal_is_a_503_that_says_why(monkeypatch, user):
+    """Stripe's rejections are account configuration, not our internals.
+
+    "You cannot use automatic_tax[enabled]=true because you have not
+    enabled Stripe Tax" is the entire fix. Letting it escape as an
+    unhandled 500 replaced it with "an internal error occurred", and the
+    browser then discarded even that.
+    """
+    from app import billing
+
+    class _Refuses:
+        class checkout:  # noqa: N801
+            class Session:
+                @staticmethod
+                def create(**_: object):
+                    raise RuntimeError(
+                        "You cannot use automatic_tax[enabled]=true because you have "
+                        "not enabled Stripe Tax in your account"
+                    )
+
+    monkeypatch.setattr(billing, "_client", lambda: _Refuses())
+    monkeypatch.setattr(billing, "ensure_customer", lambda *a, **k: "cus_test")
+    monkeypatch.setattr(billing, "price_id", lambda plan: "price_test")
+
+    with pytest.raises(billing.BillingUnavailable) as raised:
+        billing.create_checkout_session(
+            None,  # type: ignore[arg-type]
+            user,
+            "pack",
+            success_url="https://vectorize4u.vercel.app/checkout/success",
+            cancel_url="https://vectorize4u.vercel.app/#pricing",
+        )
+
+    assert "Stripe Tax" in str(raised.value), "the sentence that names the fix was dropped"
