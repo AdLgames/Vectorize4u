@@ -458,6 +458,24 @@ jobs:
           flyctl deploy --config infra/fly.api.toml --dockerfile Dockerfile \
             -a "$API_APP" --yes .
 
+      # A machine that will not boot fails as "timeout reached waiting for
+      # health checks", seven minutes after the deploy started, saying
+      # nothing whatever about why. The reason is always in the app's own
+      # log — a startup check listing every unsafe setting, or a traceback —
+      # so fetch it rather than leaving it to be gone looking for.
+      - name: Why the API would not start
+        if: failure()
+        run: |
+          echo "::group::$API_APP — recent logs"
+          flyctl logs -a "$API_APP" --no-tail 2>&1 | tail -80 || true
+          echo "::endgroup::"
+          echo
+          echo "$(flyctl logs -a "$API_APP" --no-tail 2>&1 | grep -i 'unsafe configuration' | tail -2)"
+          echo
+          echo "A line beginning 'unsafe configuration:' is the startup check"
+          echo "refusing to run, and it names every problem at once. Nothing"
+          echo "was deployed to the workers: this step runs before them."
+
       - name: The worker lanes (§4.2)
         run: |
           set -u

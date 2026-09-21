@@ -414,3 +414,39 @@ def test_recreate_is_never_the_default():
     _bootstrap().ensure_webhook(stripe, URL)
 
     assert stripe.WebhookEndpoint.deleted == [], "a re-run deleted a working endpoint"
+
+
+def test_staging_runs_on_test_keys_because_that_is_what_staging_is_for():
+    """A test key must not stop staging booting.
+
+    `is_production` is true for staging as well as prod, so a rule written
+    for prod silently applied to both. The symptom was not a message: the
+    API refused to start, the machine failed its health checks, and the
+    deploy timed out seven minutes later saying nothing about Stripe.
+    """
+    settings = _staging_settings(
+        payments_enabled=True,
+        stripe_secret_key="sk_test_abc",
+        stripe_webhook_secret="whsec_abc",
+        stripe_prices={"pack": "price_1", "starter": "price_2", "pro": "price_3"},
+        checkout_success_url="https://vectorize4u.vercel.app/checkout/success",
+        checkout_cancel_url="https://vectorize4u.vercel.app/#pricing",
+        billing_portal_return_url="https://vectorize4u.vercel.app/account",
+    )
+    settings.check()  # must not raise
+
+
+def test_production_still_refuses_a_test_key():
+    """Prod charging nobody is worse than prod refusing to start."""
+    settings = _staging_settings(
+        environment="prod",
+        payments_enabled=True,
+        stripe_secret_key="sk_test_abc",
+        stripe_webhook_secret="whsec_abc",
+        stripe_prices={"pack": "price_1", "starter": "price_2", "pro": "price_3"},
+        checkout_success_url="https://vectorize4u.com/checkout/success",
+        checkout_cancel_url="https://vectorize4u.com/#pricing",
+        billing_portal_return_url="https://vectorize4u.com/account",
+    )
+    with pytest.raises(RuntimeError, match="test key"):
+        settings.check()
