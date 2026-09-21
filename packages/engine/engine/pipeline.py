@@ -64,6 +64,34 @@ def _text_boxes(rgba: np.ndarray, profile: ImageProfile) -> list[tuple[float, fl
     return text_like_boxes(gray)
 
 
+# Where a logo stops being one drawing and starts being a stack of colour
+# bands. Flat logos in the corpus trace to single figures; the gradient
+# that prompted this came back as 460 shapes. Anything in between is
+# unusual enough to be worth saying out loud.
+BANDING_PATHS = 50
+
+# Classes where a person would describe the artwork as a handful of shapes.
+# A screenshot legitimately contains hundreds and is not banded.
+BANDABLE = ("LOGO_FLAT", "LOGO_GRADIENT", "ILLUSTRATION")
+
+
+def banding_warnings(classification: str, paths: int) -> list[str]:
+    """Say so when the trace came back as a stack of colour bands.
+
+    Separate from `_profile_warnings`, which raises this from the class
+    alone. That covers the gradient logo the classifier recognises — and
+    misses the one it does not. A gradient stand-in built for this came
+    back LOGO_FLAT at 0.467 confidence, which means hundreds of colour
+    bands and nothing said about them.
+
+    The class is a guess; at the confidences real images arrive with it is
+    close to a coin toss. The path count is not a guess.
+    """
+    if classification in BANDABLE and paths >= BANDING_PATHS:
+        return [Warning_.GRADIENTS_BANDED.value]
+    return []
+
+
 def _profile_warnings(profile: ImageProfile) -> list[str]:
     out: list[str] = []
     if profile.classification == "PHOTO":
@@ -197,6 +225,22 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
             simplify_enabled=options.simplify,
         )
     warnings += post.warnings
+
+    # Banding is a property of the *result*, not of the label.
+    #
+    # §0 promises we "detect, warn, and do the best banded trace", and
+    # `_profile_warnings` detects it from the classification. That works
+    # when the classifier is right: a real gradient logo comes back
+    # LOGO_GRADIENT at 0.542 and is warned about correctly. It is the
+    # near misses that go quiet — a gradient stand-in classified
+    # LOGO_FLAT at 0.467 and would have banded into hundreds of shapes
+    # without a word.
+    #
+    # So the label keeps its warning and the evidence gets one too:
+    # artwork a person would call one drawing does not come back as
+    # fifty shapes, whatever it was called.
+    if post.score is not None:
+        warnings += banding_warnings(profile.classification, post.score.paths)
 
     with timer("emit"):
         emitted = emit(post.doc, profile, options)
