@@ -409,7 +409,14 @@ function errorCopy(code: string | null, fallback?: string): string {
     case "unsupported_format":
       return "We couldn't read that file. Try a PNG or JPEG.";
     case "image_too_large":
-      return "That file is over 25 MB. Try exporting it smaller.";
+      // Two different limits share this code: 25 MB of bytes, and 8000 px
+      // on the longest side. Naming only the first sent someone away to
+      // re-export a small file that was refused for its dimensions.
+      return (
+        fallback ??
+        "That image is past our limits — 25 MB, and 8000 px on the longest side. " +
+          "Scaling it down a little will do it."
+      );
     case "unsafe_url":
       return "That URL can't be fetched.";
     case "tracer_crash":

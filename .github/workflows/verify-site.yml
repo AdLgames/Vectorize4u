@@ -59,6 +59,8 @@ jobs:
       - name: Is the site wired to the live API
         run: |
           python scripts/verify_site.py "${{ inputs.site }}" --api "${{ inputs.api }}"
+          # The bucket's preflight, which only a browser would otherwise send.
+          python scripts/verify_live.py "${{ inputs.api }}" --origin "${{ inputs.site }}"
 
       # Separate from the site check because the causes are separate: the
       # site can be perfectly wired to the API while sign-in is broken by a

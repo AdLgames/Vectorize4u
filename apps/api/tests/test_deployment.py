@@ -343,3 +343,37 @@ def test_the_stripe_stage_installs_the_engine_before_the_api():
     assert line.index("packages/engine") < line.index("apps/api"), (
         "the engine has to come first, as in the Dockerfiles"
     )
+
+
+def test_the_bucket_lets_a_browser_upload():
+    """§4.3 puts the browser in direct contact with R2, so the *bucket*
+    has to allow the site's origin. Nothing the API does can grant it.
+
+    Without it the browser refuses the PUT before sending it: fetch
+    rejects, there is no status and no body, nothing reaches any log, and
+    the site says "Something went wrong" for every file. A check that
+    uploads from a script cannot see it either, because CORS is a browser
+    rule and Python ignores it — which is exactly how this reached a
+    customer.
+    """
+    import yaml
+
+    script = ROOT / "infra/r2_cors.py"
+    assert script.exists(), "nothing configures the bucket's CORS policy"
+
+    body = script.read_text()
+    assert "put_bucket_cors" in body
+    assert '"PUT"' in body, "the upload is a PUT; allowing GET alone changes nothing"
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    steps = yaml.dump(workflow["jobs"]["r2"]["steps"])
+    assert "r2_cors.py --apply" in steps, "it must be appliable without a terminal"
+    assert "r2_lifecycle.py --apply" in steps, (
+        "the retention backstop is applied by nothing else either"
+    )
+
+    # And the preflight is what the end-to-end check must send, since its
+    # own PUT proves nothing about a browser's.
+    live = (ROOT / "scripts/verify_live.py").read_text()
+    assert "Access-Control-Request-Method" in live
+    assert "access-control-allow-origin" in live

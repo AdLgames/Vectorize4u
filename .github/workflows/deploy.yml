@@ -25,6 +25,7 @@ on:
           - secrets
           - deploy
           - verify
+          - r2
           - stripe
           - everything
       region:
@@ -539,7 +540,9 @@ jobs:
       # useful question after a config change is "does it still work?",
       # and answering that should not require shipping code again.
       - name: Convert an image end to end
-        run: python scripts/verify_live.py "https://${API_APP}.fly.dev"
+        run: |
+          python scripts/verify_live.py "https://${API_APP}.fly.dev" \
+            --origin "${{ inputs.site }}"
 
       # Printing the commands to run next is no use to someone holding a
       # phone. The evidence that names the cause — is there a machine, is
@@ -810,3 +813,44 @@ jobs:
           echo
           echo "Then check it with the payments stage of Verify the site, and make"
           echo "a test purchase with Stripe's 4242 4242 4242 4242 card."
+
+  r2:
+    # Bucket configuration, which nothing else sets: `bootstrap` makes Fly
+    # apps and `secrets` writes credentials, but neither touches the bucket
+    # itself. Both of these were missing in the first live deployment, and
+    # one of them broke every upload.
+    if: inputs.stage == 'r2'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet ./packages/engine ./apps/api
+
+      - name: CORS, so a browser can upload at all
+        working-directory: apps/api
+        env:
+          VEC_STORAGE_BACKEND: r2
+          VEC_R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VEC_R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          VEC_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          VEC_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          SITE_URL: ${{ inputs.site }}
+        run: |
+          set -u
+          python ../../infra/r2_cors.py --apply --origin "${SITE_URL%/}"
+
+      - name: The retention backstop (§8)
+        working-directory: apps/api
+        env:
+          VEC_STORAGE_BACKEND: r2
+          VEC_R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VEC_R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          VEC_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          VEC_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -u
+          # "We delete your files after 24 hours" is otherwise a claim that
+          # rests entirely on a cron job nobody is watching.
+          python ../../infra/r2_lifecycle.py --apply

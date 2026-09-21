@@ -90,13 +90,54 @@ def health(base: str) -> None:
     print(f"  health      ok  (environment={body.get('environment')})")
 
 
-def upload(base: str, image: bytes) -> str:
+def _browser_may_upload(put_url: str, origin: str) -> None:
+    """Send the preflight a browser would send, and read the answer.
+
+    This script's own PUT proves nothing about the browser's, because CORS
+    is enforced by the browser and Python ignores it entirely. A bucket
+    with no CORS policy therefore passes every check here while refusing
+    every real upload — and it refuses them *before* sending anything, so
+    `fetch` rejects with no status, no body and nothing in any log. The
+    site shows "Something went wrong" for every file. That is what this
+    check exists to catch, because it took a customer to find it.
+    """
+    status, _, headers = _request(
+        "OPTIONS",
+        put_url,
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    allowed = headers.get("access-control-allow-origin")
+    if not allowed:
+        raise StepFailed(
+            f"the bucket sent no Access-Control-Allow-Origin for {origin} "
+            f"(preflight answered {status}), so every upload from a browser is\n"
+            "      blocked before it is sent. Nothing reaches a log, and the site\n"
+            "      says 'Something went wrong' for every file.\n"
+            "      Fix: python infra/r2_cors.py --apply --origin " + origin
+        )
+    if allowed not in ("*", origin):
+        raise StepFailed(f"the bucket allows {allowed!r}, which is not {origin}")
+
+    methods = (headers.get("access-control-allow-methods") or "").upper()
+    if methods and "PUT" not in methods and "*" not in methods:
+        raise StepFailed(f"the bucket allows {methods!r}, and the upload is a PUT")
+    print(f"  cors (r2)   ok  (preflight allows {allowed} to PUT)")
+
+
+def upload(base: str, image: bytes, origin: str | None = None) -> str:
     status, slot = _json(
         "POST",
         f"{base}/v1/uploads",
         {"content_type": "image/png", "content_length": len(image)},
     )
     _expect(status, 200, "POST /v1/uploads", slot)
+
+    if origin:
+        _browser_may_upload(slot["put_url"], origin)
 
     put_status, put_body, _ = _request(
         slot.get("method", "PUT"),
@@ -199,6 +240,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("base_url", help="e.g. https://vectorize4u-api.fly.dev")
     parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE)
+    parser.add_argument(
+        "--origin",
+        default="",
+        help="the site that uploads from a browser. Given, the bucket's CORS "
+        "preflight is checked too — the one part of the upload path this "
+        "script's own PUT cannot exercise.",
+    )
     args = parser.parse_args()
 
     base = args.base_url.rstrip("/")
@@ -207,7 +255,7 @@ def main() -> int:
 
     try:
         health(base)
-        job_id = preview(base, upload(base, image))
+        job_id = preview(base, upload(base, image, args.origin or None))
         job = wait(base, job_id)
         check(job)
         fetch_preview_tile(base, job)
