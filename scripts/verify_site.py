@@ -73,6 +73,19 @@ def _title(html: str) -> str:
     return found.group(1).strip() if found else "(none)"
 
 
+def _provenance(headers: dict[str, str]) -> str:
+    """Which build, and whether it came from a cache.
+
+    Two runs that fail identically are ambiguous: the setting was not
+    changed, or it was changed and the old build is still being served.
+    These headers tell those apart, and a redeploy that reuses the build
+    cache or a CDN hit both show up here.
+    """
+    interesting = ("x-vercel-id", "x-vercel-cache", "age", "x-nextjs-prerender")
+    parts = [f"{name}={headers[name]}" for name in interesting if headers.get(name)]
+    return ", ".join(parts) if parts else "(no deployment headers)"
+
+
 def _interstitial(html: str, headers: dict[str, str]) -> str | None:
     """Name the wall in front of the site, if there is one.
 
@@ -115,6 +128,7 @@ def home(site: str) -> str:
             "protection off under Settings -> Deployment Protection."
         )
     print(f"  home        ok  ({len(raw)} bytes, title {_title(html)!r})")
+    print(f"  served by   {_provenance(headers)}")
     return html
 
 
@@ -145,7 +159,15 @@ def sitemap(site: str) -> list[str]:
     if wrong_origin:
         raise StepFailed(
             f"the sitemap points somewhere else, e.g. {wrong_origin[0]} — "
-            f"NEXT_PUBLIC_SITE_URL does not match {site}"
+            f"NEXT_PUBLIC_SITE_URL does not match {site}.\n"
+            "      If this is the second run after changing it, the setting is not\n"
+            "      the thing left to fix. Three ways a changed variable does not\n"
+            "      reach the site: the edited copy is scoped to Preview and not\n"
+            "      Production; the redeploy reused the build cache, so the\n"
+            "      prerendered pages were never regenerated (untick 'Use existing\n"
+            "      Build Cache'); or the newest deployment is not the one this\n"
+            "      domain points at. The x-vercel-id above is the deployment that\n"
+            "      answered — compare it between runs."
         )
     # sitemap.ts builds `${SITE}/path`, so a NEXT_PUBLIC_SITE_URL that ends
     # in a slash yields `https://host//path`. It still resolves, which is
