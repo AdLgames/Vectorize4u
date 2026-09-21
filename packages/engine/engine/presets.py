@@ -94,6 +94,47 @@ def potrace_presets(rgba: np.ndarray) -> list[Params]:
     return out
 
 
+def _is_effectively_bilevel(rgba: np.ndarray, *, coverage: float = 0.9) -> bool:
+    """Two tones and almost nothing between them — what potrace is for.
+
+    Not `profile.is_bilevel`, which asks whether the file *is* two-colour.
+    A logo that has been through a GIF palette or a resize carries a halo
+    of intermediate pixels and a stray tint, and reads as neither bilevel
+    nor grayscale while every visible pixel is still black or white.
+
+    It matters because potrace flattens to one ink colour. On a two-tone
+    image that loses nothing and fits one closed curve per region, where a
+    colour tracer emits a path per band; on a coloured image it would
+    throw the colour away, and the score would rightly reject it.
+    """
+    rgb = rgba[:, :, :3].reshape(-1, 3).astype(np.float32)
+    if rgba.shape[2] == 4:
+        visible = rgba[:, :, 3].reshape(-1) > 128
+        if visible.any():
+            rgb = rgb[visible]
+    if rgb.size == 0:
+        return False
+
+    # Saturation first: two *colours* are not two tones, and potrace would
+    # discard the difference.
+    spread = rgb.max(axis=1) - rgb.min(axis=1)
+    if float(np.mean(spread > 40)) > 0.02:
+        return False
+
+    luma = rgb @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
+    split = float(_otsu_threshold(rgba))
+    dark, light = luma <= split, luma > split
+    if not dark.any() or not light.any():
+        return False
+
+    centres = (float(luma[dark].mean()), float(luma[light].mean()))
+    if centres[1] - centres[0] < 60:
+        return False  # one tone with a shadow, not two
+
+    near = (np.abs(luma - centres[0]) < 32) | (np.abs(luma - centres[1]) < 32)
+    return float(near.mean()) >= coverage
+
+
 def candidates_for(
     profile: ImageProfile,
     options: Options,
@@ -122,10 +163,29 @@ def candidates_for(
             seen.add(p.key())
             picked.append(p)
 
+    # A two-tone image gets potrace whatever it was classified as. This one
+    # arrived as LOGO_FLAT at 0.46 confidence — just above the threshold that
+    # would have pulled in the runner-up's presets — so a black-and-white
+    # logo was traced only by the colour tracer, which follows each pixel
+    # step of an aliased edge. potrace scored higher on the engine's own
+    # metric with a quarter of the nodes, and was never offered.
+    bilevel = potrace_available and _is_effectively_bilevel(trace_input)
+
     for cls in classes:
-        for p in VTRACER_PRESETS.get(cls, []):
-            add(p)
-        if cls in ("LINE_ART", "SKETCH") and potrace_available:
+        vtracer = VTRACER_PRESETS.get(cls, [])
+        if bilevel and vtracer:
+            # After the class's first choice, not instead of it: the budget
+            # is four, so ordering decides what is tried at all, and both
+            # engines beat four variations of one.
+            add(vtracer[0])
+            for p in potrace_presets(trace_input):
+                add(p)
+            for p in vtracer[1:]:
+                add(p)
+        else:
+            for p in vtracer:
+                add(p)
+        if cls in ("LINE_ART", "SKETCH") and potrace_available and not bilevel:
             for p in potrace_presets(trace_input):
                 add(p)
 
