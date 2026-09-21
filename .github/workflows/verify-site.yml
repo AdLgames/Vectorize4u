@@ -24,6 +24,28 @@ on:
         required: true
         type: string
         default: https://vectorize4u-api.fly.dev
+      supabase:
+        description: >-
+          Whether to check sign-in too. "auto" reads the project URL out of
+          what the site shipped, so there is no twenty-character project ref
+          to mistype; give a URL to pin a specific project, or empty to skip
+          sign-in and check only the site. Nothing is emailed either way:
+          the check is read-only, because a real magic-link round trip needs
+          an inbox and burns the project's email rate limit.
+        required: false
+        type: string
+        default: auto
+
+      payments:
+        description: >-
+          "yes" also checks that this deployment can take money: payments
+          reported on, the site's prices matching what the API charges, and
+          a webhook that refuses an unsigned event. Nothing is bought — a
+          real purchase needs a session and a card. Leave it "no" until the
+          stripe stage has run and been deployed, or this fails by design.
+        required: false
+        type: string
+        default: "no"
 
 jobs:
   site:
@@ -37,6 +59,20 @@ jobs:
       - name: Is the site wired to the live API
         run: |
           python scripts/verify_site.py "${{ inputs.site }}" --api "${{ inputs.api }}"
+
+      # Separate from the site check because the causes are separate: the
+      # site can be perfectly wired to the API while sign-in is broken by a
+      # project that still signs with the legacy shared secret.
+      - name: Is sign-in wired to the same Supabase project
+        if: inputs.supabase != ''
+        run: |
+          python scripts/verify_auth.py "${{ inputs.site }}" \
+            --api "${{ inputs.api }}" --supabase "${{ inputs.supabase }}"
+
+      - name: Can this deployment take money
+        if: inputs.payments == 'yes'
+        run: |
+          python scripts/verify_payments.py "${{ inputs.site }}" --api "${{ inputs.api }}"
 
       - name: What to change if that failed
         if: failure()

@@ -25,21 +25,77 @@ workflow to run. In the Vercel dashboard:
 
 ## Once: the environment variables
 
-Set all three for **Production**, and the first two for Preview too, or
+Set all four for **Production**, and the first two for Preview too, or
 preview deployments will quietly talk to a different API than the one you
-think you are testing:
+think you are testing.
+
+Two things about the form itself:
+
+- **Type: `Config`, not `Secret`.** Vercel warns about this, and it is
+  right. `NEXT_PUBLIC_` means the value is compiled into JavaScript that
+  anyone can read in DevTools, so marking it secret claims a privacy the
+  prefix has already given away. Every variable below is public by
+  nature. The one Supabase value that must never appear here in any form,
+  under any type, is the service-role key.
+- **No trailing slash on the URLs.** `sitemap.ts` builds `${SITE}/path`,
+  so a `NEXT_PUBLIC_SITE_URL` ending in `/` yields `https://host//path`
+  for every canonical and every sitemap entry. Those still resolve, which
+  is exactly why it survives a glance at the site.
 
 | Variable | Value | Why |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_BASE` | `https://vectorize4u-api.fly.dev` | Where the browser sends conversions. |
 | `NEXT_PUBLIC_SITE_URL` | your real domain, e.g. `https://vectorize4u.com` | Canonicals, `sitemap.xml`, Open Graph. |
 | `NEXT_PUBLIC_SUPABASE_URL` | your Supabase project URL | Sign-in. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the **anon** key | Sign-in. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the **publishable** key, `sb_publishable_…` | Sign-in. |
 
 The last two are the only Supabase values that belong in a browser
-bundle. The **service-role key never goes near the web app** — it
-bypasses every row-level policy, and `NEXT_PUBLIC_` means "compiled into
-JavaScript anyone can read".
+bundle. Supabase renamed these: the dashboard now offers a *publishable*
+key and a *secret* key, which replace the old `anon` and `service_role`
+JWTs. Publishable is the one to use — the variable keeps the older name
+because that is the argument `supabase-js` takes. The **secret key goes
+nowhere**: not here, not on Fly, not into a chat window. Nothing in this
+repository reads it. It bypasses every row-level policy, and
+`NEXT_PUBLIC_` means "compiled into JavaScript anyone can read".
+
+### Sign-in needs three more things set, in three different places
+
+Sign-in is a magic link (§7), and it spans the project, the site and the
+API. Each is configured separately, and every mismatch has the same
+symptom: anonymous previews keep working, every signed-in request answers
+401, and nothing logs why.
+
+1. **Supabase → Authentication → URL Configuration.** Set the Site URL to
+   your site, and add `<your site>/auth/callback` to the redirect
+   allowlist. `AuthProvider` asks for a link back to
+   `${window.location.origin}/auth/callback`, and a redirect that is not
+   on the list is not honoured — the link arrives and lands in the wrong
+   place, so the code is never exchanged for a session. This is the one
+   part no check can see from outside.
+2. **Supabase → Authentication → JWT Keys**, below.
+3. **The API's `VEC_SUPABASE_URL`**, from the `SUPABASE_URL` repository
+   secret via the `secrets` stage. It drives both the JWKS endpoint and
+   the expected issuer, so it has to be the same project, exactly. Staged
+   secrets only reach the machines on a deploy, so run `deploy` after
+   `secrets`.
+
+Then check the lot from Actions → **Verify the site**, filling in the
+`supabase` input. It reads the project's JWKS and settings, confirms the
+site's bundle names the project, and proves the API trusts *this*
+project's signing keys by offering it a token carrying a real key id and
+a deliberately broken signature. Nothing is emailed: a real magic-link
+round trip would need an inbox and would exhaust the project's email rate
+limit.
+
+Check **Authentication → JWT Keys** in the same dashboard while you are
+there. `app/config.py` derives the JWKS endpoint from the project URL
+(`/auth/v1/.well-known/jwks.json`), which is where *asymmetric* signing
+keys are published. A project still on the legacy HS256 shared secret
+publishes no JWKS, so every signed-in request answers 401 while
+anonymous previews carry on working — a confusing half-broken state.
+Migrating to signing keys on that page is the better fix, because there
+is then no shared secret to store anywhere; the alternative is setting
+`VEC_SUPABASE_JWT_SECRET` on the API and the workers.
 
 Without the Supabase pair the site still works: anonymous previews are
 free and rate-limited by IP (§7), which is the landing page's whole

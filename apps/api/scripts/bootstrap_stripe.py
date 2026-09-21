@@ -4,7 +4,12 @@ Run it once per Stripe environment (test, then live):
 
     VEC_STRIPE_SECRET_KEY=sk_test_... python scripts/bootstrap_stripe.py
 
-It prints the `VEC_STRIPE_PRICES` line to paste into your env.
+It prints the `VEC_STRIPE_PRICES` line to paste into your env. Actions
+runs it too (`.github/workflows/deploy.yml`, the `stripe` stage), because
+"open a terminal" is not a step everyone can take — so it can also
+register the webhook endpoint and write what it made to a file with
+`--emit`, which is how the workflow sets the Fly secrets without a
+signing secret ever passing through a log or a clipboard.
 
 Why a script rather than the dashboard:
 
@@ -72,6 +77,41 @@ def find_price(stripe, product_id: str, item: Product):  # type: ignore[no-untyp
     return None
 
 
+def ensure_webhook(stripe, url: str) -> tuple[str, str | None]:  # type: ignore[no-untyped-def]
+    """Register the endpoint, subscribed to exactly the events we handle.
+
+    Imported from the handler rather than restated: an endpoint subscribed
+    to an event nothing handles is noise, and one missing an event we do
+    handle silently drops paid work.
+
+    Stripe returns a signing secret only when the endpoint is *created*.
+    So an endpoint that already exists is left exactly as it is, and the
+    caller is told there is no secret to collect — rolling it is a
+    decision that breaks the running deployment until the new value is
+    set, which is not something to do unasked.
+    """
+    from app.routers.stripe_webhooks import HANDLED
+
+    events = sorted(HANDLED)
+    for endpoint in stripe.WebhookEndpoint.list(limit=100).auto_paging_iter():
+        if endpoint["url"] == url:
+            missing = sorted(set(events) - set(endpoint.get("enabled_events") or []))
+            if missing:
+                stripe.WebhookEndpoint.modify(endpoint["id"], enabled_events=events)
+                print(f"  updated webhook  {endpoint['id']} (added {', '.join(missing)})")
+            else:
+                print(f"  found webhook    {endpoint['id']}")
+            return endpoint["id"], None
+
+    created = stripe.WebhookEndpoint.create(
+        url=url,
+        enabled_events=events,
+        description="Vectorize4u — created by scripts/bootstrap_stripe.py",
+    )
+    print(f"  created webhook  {created['id']} ({len(events)} events)")
+    return created["id"], created.get("secret")
+
+
 def main() -> int:
     try:
         return _run()
@@ -97,6 +137,22 @@ def main() -> int:
 
 
 def _run() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Create this product's Stripe objects")
+    parser.add_argument(
+        "--webhook-url",
+        default=os.environ.get("VEC_STRIPE_WEBHOOK_URL", ""),
+        help="register a webhook endpoint at this URL, e.g. https://api.example/v1/stripe/webhook",
+    )
+    parser.add_argument(
+        "--emit",
+        default="",
+        help="write what was made to this JSON file. Use it rather than reading "
+        "stdout: the webhook signing secret goes in here and must not reach a log.",
+    )
+    args = parser.parse_args()
+
     stripe, is_live = client()
     mode = "LIVE" if is_live else "test"
     print(f"Stripe {mode} mode\n")
@@ -138,8 +194,30 @@ def _run() -> int:
 
     import json
 
+    price_line = json.dumps(prices, sort_keys=True, separators=(",", ":"))
+
+    webhook_secret: str | None = None
+    if args.webhook_url:
+        print()
+        _, webhook_secret = ensure_webhook(stripe, args.webhook_url)
+        if webhook_secret is None:
+            print(
+                "  (that endpoint already existed, so Stripe did not hand back its\n"
+                "   signing secret — Stripe only returns it at creation. If the\n"
+                "   deployment does not have VEC_STRIPE_WEBHOOK_SECRET, roll it in\n"
+                "   the dashboard and set the new value.)"
+            )
+
+    if args.emit:
+        # Not stdout: the signing secret is in here.
+        payload = {"mode": "live" if is_live else "test", "prices": prices}
+        if webhook_secret:
+            payload["webhook_secret"] = webhook_secret
+        Path(args.emit).write_text(json.dumps(payload))
+        print(f"\nwrote {args.emit}")
+
     print("\nAdd this to your environment:\n")
-    print(f"VEC_STRIPE_PRICES={json.dumps(prices, sort_keys=True, separators=(',', ':'))}")
+    print(f"VEC_STRIPE_PRICES={price_line}")
 
     if is_live:
         print(

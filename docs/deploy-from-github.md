@@ -90,6 +90,11 @@ Nothing above involves Stripe. The API runs with `VEC_PAYMENTS_ENABLED=0`,
 accounts, batch — works. That is a site that cannot sell yet, rather than
 a site that will not boot.
 
+**docs/payments.md** is the whole of it now: the `stripe` stage runs the
+bootstrap script from Actions, creates the products, prices and webhook
+endpoint, and sets the secrets on the API itself. The list below is the
+manual alternative, for a price list you configured elsewhere.
+
 When Stripe exists, add these repository secrets and re-run `secrets`:
 
 - `VEC_STRIPE_SECRET_KEY`

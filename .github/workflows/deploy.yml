@@ -25,6 +25,7 @@ on:
           - secrets
           - deploy
           - verify
+          - stripe
           - everything
       region:
         description: Fly region — all apps and the database must share one
@@ -72,6 +73,22 @@ on:
         options:
           - staging
           - launch
+      site:
+        description: >-
+          The deployed site, used by the stripe stage to derive the checkout
+          return URLs. The startup check refuses production while they still
+          say localhost, so they are derived rather than remembered.
+        required: false
+        type: string
+        default: https://vectorize4u.vercel.app
+      confirm_live:
+        description: >-
+          Only for the stripe stage, and only with a live key. "yes" means
+          create real products and prices in the real account and start
+          charging real cards. Anything else refuses a live key outright.
+        required: false
+        type: string
+        default: "no"
       db_app:
         description: >-
           Existing Postgres app to attach to. Separate from the prefix so
@@ -371,6 +388,17 @@ jobs:
           # /v1/checkout answers 503 — which is a working site that cannot
           # sell yet, rather than a site that will not boot.
           if [ -z "${STRIPE_SECRET_KEY}" ] || [ -z "${STRIPE_PRICES}" ]; then
+            # The `stripe` stage configures payments *directly*, because
+            # price ids are created by a script rather than typed in. So an
+            # absent repository secret no longer means "payments off" — it
+            # means "not configured from here". Turning them off on that
+            # basis would silently undo that stage on the next secrets run,
+            # and the only symptom would be checkout answering 503.
+            if flyctl secrets list -a "$API_APP" | grep -q VEC_STRIPE_PRICES; then
+              echo "no Stripe configuration here, but the API already has prices"
+              echo "from the stripe stage — leaving payments exactly as they are"
+              exit 0
+            fi
             echo "no Stripe configuration — payments stay off"
             flyctl secrets set -a "$API_APP" --stage VEC_PAYMENTS_ENABLED="0"
             exit 0
@@ -627,3 +655,115 @@ jobs:
             flyctl logs -a "$app" --no-tail 2>&1 | tail -80 || true
             echo "::endgroup::"
           done
+
+  stripe:
+    # Its own stage, and never part of `everything`. Creating products and
+    # prices in somebody's Stripe account is not a thing to do as a side
+    # effect of shipping code.
+    if: inputs.stage == 'stripe'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Refuse a live key unless it was asked for
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.VEC_STRIPE_SECRET_KEY }}
+        run: |
+          set -u
+          if [ -z "${STRIPE_SECRET_KEY}" ]; then
+            echo "The VEC_STRIPE_SECRET_KEY repository secret is not set."
+            echo "Start in test mode: Stripe dashboard -> Developers -> API keys,"
+            echo "with the 'Test mode' toggle ON, and copy the secret key (sk_test_...)."
+            exit 1
+          fi
+          # `case` rather than a substring check, so a key that merely
+          # contains the word cannot pass for one that starts with it.
+          case "$STRIPE_SECRET_KEY" in
+            sk_live_*)
+              if [ "${{ inputs.confirm_live }}" != "yes" ]; then
+                echo "That is a LIVE key, and this run did not ask for live mode."
+                echo
+                echo "Live mode creates real products and prices in the real"
+                echo "account, and turns on charging real cards. Run this stage"
+                echo "again with confirm_live: yes if that is what you mean."
+                exit 1
+              fi
+              echo "LIVE mode, confirmed by this run's input."
+              ;;
+            sk_test_*) echo "test mode" ;;
+            *)
+              echo "That does not look like a Stripe secret key (sk_test_ or sk_live_)."
+              echo "A publishable key (pk_) cannot create products."
+              exit 1
+              ;;
+          esac
+
+      - run: pip install --quiet "./apps/api" stripe
+
+      - name: Products, prices and the webhook endpoint
+        env:
+          VEC_STRIPE_SECRET_KEY: ${{ secrets.VEC_STRIPE_SECRET_KEY }}
+        working-directory: apps/api
+        run: |
+          set -u
+          # --emit, not stdout: Stripe returns a webhook signing secret once,
+          # at creation, and a log is forever. Price ids are not secret and
+          # are printed; the file carries the one value that is.
+          python scripts/bootstrap_stripe.py \
+            --webhook-url "https://${API_APP}.fly.dev/v1/stripe/webhook" \
+            --emit "$RUNNER_TEMP/stripe.json"
+
+      - name: Hand it to the API
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.VEC_STRIPE_SECRET_KEY }}
+          SITE_URL: ${{ inputs.site }}
+        run: |
+          set -u
+          PRICES="$(jq -c '.prices' "$RUNNER_TEMP/stripe.json")"
+          WHSEC="$(jq -r '.webhook_secret // empty' "$RUNNER_TEMP/stripe.json")"
+          SITE="${SITE_URL%/}"
+
+          # The three return URLs must be on the site, and the startup check
+          # refuses production while they still say localhost — so they are
+          # derived here rather than left to be remembered.
+          flyctl secrets set -a "$API_APP" --stage \
+            VEC_STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
+            VEC_STRIPE_PRICES="$PRICES" \
+            VEC_CHECKOUT_SUCCESS_URL="$SITE/checkout/success" \
+            VEC_CHECKOUT_CANCEL_URL="$SITE/#pricing" \
+            VEC_BILLING_PORTAL_RETURN_URL="$SITE/account" > /dev/null
+          echo "set the key, the prices and the three return URLs"
+
+          if [ -n "$WHSEC" ]; then
+            flyctl secrets set -a "$API_APP" --stage \
+              VEC_STRIPE_WEBHOOK_SECRET="$WHSEC" > /dev/null
+            echo "set the webhook signing secret from the endpoint just created"
+          elif flyctl secrets list -a "$API_APP" | grep -q VEC_STRIPE_WEBHOOK_SECRET; then
+            echo "the webhook endpoint already existed and the API already holds a"
+            echo "signing secret — left alone"
+          else
+            echo
+            echo "The webhook endpoint already existed, so Stripe returned no signing"
+            echo "secret, and the API does not have one. Until it does, every paid"
+            echo "event is rejected and no credits are granted."
+            echo "Roll it: Stripe -> Developers -> Webhooks -> that endpoint -> reveal"
+            echo "or roll the signing secret, put it in the VEC_STRIPE_WEBHOOK_SECRET"
+            echo "repository secret, and run the secrets stage."
+            exit 1
+          fi
+
+          # Last, so a failure above leaves payments off rather than half on.
+          flyctl secrets set -a "$API_APP" --stage VEC_PAYMENTS_ENABLED="1" > /dev/null
+          echo "payments enabled"
+
+      - name: What is left to do
+        run: |
+          echo "Staged, not live: secrets reach the machines on a deploy."
+          echo "Run this workflow again with stage: deploy."
+          echo
+          echo "Then check it with the payments stage of Verify the site, and make"
+          echo "a test purchase with Stripe's 4242 4242 4242 4242 card."
