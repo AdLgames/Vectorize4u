@@ -182,3 +182,38 @@ def test_the_deploy_workflow_verifies_more_than_health():
     default = re.search(r'DEFAULT_IMAGE = REPO / "(.+?)" / "(.+?)" / "(.+?)"', script.read_text())
     assert default is not None, "DEFAULT_IMAGE moved; this test can no longer find it"
     assert (ROOT / default.group(1) / default.group(2) / default.group(3)).exists()
+
+
+def test_every_app_shares_one_database():
+    """The API and the workers must read and write the same rows.
+
+    `flyctl postgres attach` names both the database and the user after
+    the app doing the attaching, so attaching each app separately hands
+    every app its own empty database. It fails silently and late: the API
+    migrates and writes a job, the worker connects to a different database
+    and raises on a `jobs` table that is not there, and from outside the
+    preview simply never leaves 'queued'.
+    """
+    workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
+
+    # Commands only: the comment above the step names the command too, and
+    # explaining the trap is not the same as falling into it. Continuation
+    # lines are joined, since the flags that matter sit on them.
+    lines = workflow.splitlines()
+    attaches = []
+    for index, line in enumerate(lines):
+        if "flyctl postgres attach" not in line or line.lstrip().startswith("#"):
+            continue
+        command = line
+        while command.rstrip().endswith("\\") and index + 1 < len(lines):
+            index += 1
+            command += lines[index]
+        attaches.append(command)
+    assert len(attaches) == 1, "attach exactly once; the workers are handed that URL"
+
+    attach = attaches[0]
+    assert "--database-name" in attach and "--database-user" in attach, (
+        "without both flags the database and the user are named after the app, "
+        "which is the whole bug"
+    )
+    assert "$API_APP" in attach, "the app that runs the migrations is the one that attaches"
