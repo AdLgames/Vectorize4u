@@ -63,7 +63,7 @@ def _get(url: str, *, headers: dict[str, str] | None = None) -> tuple[int, bytes
         raise StepFailed(f"GET {url} did not connect: {error.reason}")
 
 
-def jwks(supabase: str) -> str:
+def jwks(supabase: str) -> tuple[str, str]:
     """The project must publish asymmetric keys, or the API cannot verify.
 
     A project still on the legacy shared HS256 secret serves an empty key
@@ -98,19 +98,30 @@ def jwks(supabase: str) -> str:
             f"{sorted(ASYMMETRIC)} on the asymmetric path"
         )
     print(f"  jwks        ok  ({len(keys)} key(s), {sorted(algorithms)})")
-    return str(usable[0]["kid"])
+    # The algorithm comes back with the key id because the probe has to
+    # claim the *same* one. A forged header saying RS256 against an ES256
+    # key makes PyJWT hand an EC key to the RSA algorithm, and the API
+    # answers "Expecting a PEM-formatted key" — which says nothing about
+    # whether it trusts this project, and is what the first real run did.
+    return str(usable[0]["kid"]), str(usable[0]["alg"])
 
 
-def auth_settings(supabase: str) -> None:
+def auth_settings(supabase: str, apikey: str | None) -> None:
     """Email sign-in on, and sign-up not disabled.
 
     A magic link creates the user on first use, so a project with sign-ups
     turned off silently admits existing users only.
+
+    The endpoint wants the publishable key, and answers 401 without it. The
+    key is public — it ships in the site's JavaScript, which is where this
+    one came from — so sending it reveals nothing.
     """
-    status, raw = _get(f"{supabase}/auth/v1/settings")
+    headers = {"apikey": apikey} if apikey else {}
+    status, raw = _get(f"{supabase}/auth/v1/settings", headers=headers)
     if status != 200:
-        # Not fatal: some projects restrict it. The checks that matter ran.
-        print(f"  settings    -   (unreadable, {status}; skipping)")
+        # Not fatal: the checks that decide whether sign-in works have run.
+        missing = " (no publishable key to send)" if not apikey else ""
+        print(f"  settings    -   (unreadable, {status}{missing}; skipping)")
         return
     try:
         body = json.loads(raw)
@@ -187,9 +198,9 @@ def api_rejects_nonsense(api: str) -> None:
     print("  api         ok  (401 for a malformed token)")
 
 
-def api_trusts_this_project(api: str, kid: str) -> None:
+def api_trusts_this_project(api: str, kid: str, alg: str) -> None:
     """The check that catches a project mismatch. See the module docstring."""
-    header = _segment({"alg": "RS256", "typ": "JWT", "kid": kid})
+    header = _segment({"alg": alg, "typ": "JWT", "kid": kid})
     claims = _segment(
         {
             "sub": "00000000-0000-0000-0000-000000000000",
@@ -227,7 +238,7 @@ def api_trusts_this_project(api: str, kid: str) -> None:
     print(f"  project     ok  (the API knows key {kid[:12]}… from this project)")
 
 
-def discover_project(site: str) -> str:
+def discover_project(site: str) -> tuple[str, str | None]:
     """Read the project URL out of what the site shipped.
 
     The alternative is typing a twenty-character project ref by hand into a
@@ -256,7 +267,8 @@ def discover_project(site: str) -> str:
             f"the build names more than one Supabase project: {sorted(found)}. "
             "Pass --supabase to say which one is meant to be live."
         )
-    return found.pop()
+    keys = re.findall(r"sb_publishable_[A-Za-z0-9_-]{16,}", "\n".join(bodies))
+    return found.pop(), (keys[0] if keys else None)
 
 
 def main() -> int:
@@ -275,7 +287,10 @@ def main() -> int:
 
     discovered = args.supabase.strip().lower() in ("", "auto")
     try:
-        supabase = discover_project(site) if discovered else args.supabase.rstrip("/")
+        if discovered:
+            supabase, apikey = discover_project(site)
+        else:
+            supabase, apikey = args.supabase.rstrip("/"), None
     except StepFailed as failure:
         print(f"verifying sign-in for {site}\n\nFAILED: {failure}", file=sys.stderr)
         return 1
@@ -284,11 +299,11 @@ def main() -> int:
     print(f"verifying sign-in across {site}, {api} and {supabase} ({origin})")
 
     try:
-        kid = jwks(supabase)
-        auth_settings(supabase)
+        kid, alg = jwks(supabase)
+        auth_settings(supabase, apikey)
         web_is_configured(site, supabase)
         api_rejects_nonsense(api)
-        api_trusts_this_project(api, kid)
+        api_trusts_this_project(api, kid, alg)
     except StepFailed as failure:
         print(f"\nFAILED: {failure}", file=sys.stderr)
         return 1
