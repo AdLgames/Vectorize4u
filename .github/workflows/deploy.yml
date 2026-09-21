@@ -709,6 +709,25 @@ jobs:
       # `stripe` comes with the API's dependencies, so it is not repeated.
       - run: pip install --quiet ./packages/engine ./apps/api
 
+      - name: Does the API already hold a webhook secret
+        run: |
+          set -u
+          # Asked before anything is created, because it decides whether an
+          # existing endpoint may be replaced. Stripe hands back a signing
+          # secret only when an endpoint is created, so one whose secret was
+          # never stored can never verify anything and is safe to replace.
+          # One that IS in use must never be touched: deleting it stops every
+          # paid event, and the first sign would be a customer who paid and
+          # got nothing.
+          if flyctl secrets list -a "$API_APP" | grep -q VEC_STRIPE_WEBHOOK_SECRET; then
+            echo "RECREATE_WEBHOOK=" >> "$GITHUB_ENV"
+            echo "the API holds a signing secret — any existing endpoint stays"
+          else
+            echo "RECREATE_WEBHOOK=--recreate-webhook" >> "$GITHUB_ENV"
+            echo "the API holds no signing secret — an existing endpoint will be"
+            echo "replaced, because its secret is unrecoverable and it verifies nothing"
+          fi
+
       - name: Products, prices and the webhook endpoint
         env:
           VEC_STRIPE_SECRET_KEY: ${{ secrets.VEC_STRIPE_SECRET_KEY }}
@@ -720,6 +739,7 @@ jobs:
           # are printed; the file carries the one value that is.
           python scripts/bootstrap_stripe.py \
             --webhook-url "https://${API_APP}.fly.dev/v1/stripe/webhook" \
+            $RECREATE_WEBHOOK \
             --emit "$RUNNER_TEMP/stripe.json"
 
       - name: Hand it to the API

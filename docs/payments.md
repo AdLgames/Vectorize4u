@@ -43,11 +43,20 @@ a log and a settings page.
   off rather than half on.
 
 The signing secret is written to a file and read by the workflow, never
-printed. Stripe returns it **only when the endpoint is created**, so a
-re-run against an existing endpoint reports that there is none to collect
-and leaves the running deployment's secret alone. Rolling it breaks
-payments until the new value is set, which is not something a re-run
-should do on its own.
+printed. Stripe returns it **only when the endpoint is created**, which
+makes re-runs delicate, so the stage decides before it creates anything:
+
+- **The API already holds a signing secret** → any existing endpoint is
+  left exactly as it is. Deleting one that is in use stops every paid
+  event, and the first sign would be a customer who paid and got nothing.
+- **The API holds none** → an existing endpoint is replaced. Its secret is
+  unrecoverable, so it can never verify anything; replacing it costs
+  nothing and is the only way to obtain a secret without a human in a
+  dashboard.
+
+That second case is not hypothetical — it is the state a half-finished
+run leaves behind, with the endpoint created and its secret lost to the
+error that followed.
 
 ## What the check can and cannot prove
 
