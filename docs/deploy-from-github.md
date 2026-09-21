@@ -62,8 +62,9 @@ account uses. Four stages, in order, because they fail differently and
 you want to know which one broke:
 
 1. **`bootstrap`** — creates the five apps, the Postgres cluster and the
-   Redis machine, attaches the database to each app, generates the
-   secrets. Safe to re-run; everything in it checks first.
+   Redis machine, attaches one shared database and points every app at
+   it, generates the secrets. Safe to re-run; everything in it checks
+   first.
 2. **`secrets`** — writes configuration to all four apps.
 3. **`deploy`** — builds both images, ships the API (running
    `alembic upgrade head` as its release command) and the three worker
@@ -116,6 +117,12 @@ likely failures:
   cannot reach Redis. `flyctl logs -a <prefix>-worker`.
 - **`verify` fails on the presigned PUT.** The R2 credentials or the
   bucket name, not the code. Re-run `secrets` after fixing them.
+- **`verify` shows the worker receiving the job and then raising on its
+  first query.** The worker is on a different database from the API. Fly
+  names a database and its user after the app that attaches, so one
+  attach per app gives each app its own. Re-run `bootstrap`: it detaches,
+  attaches one shared database, and hands the workers that connection
+  string.
 
 `flyctl logs -a vectorize-api` is the follow-up, and fly.io's dashboard
 shows the same logs in a browser.

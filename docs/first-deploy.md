@@ -42,7 +42,15 @@ is felt on every page.
 
 ```sh
 fly postgres create --name vectorize-db --region lhr
-fly postgres attach vectorize-db -a vectorize-api
+
+# Attach once, naming the database and the user explicitly. Both default
+# to the name of the app doing the attaching, so attaching the API and
+# then the workers gives each of them a separate, empty database — and
+# nothing says so. The API migrates and writes a job, the worker connects
+# to a different database and raises on a `jobs` table that was never
+# created there, and the preview just sits in 'queued' forever.
+fly postgres attach vectorize-db -a vectorize-api \
+  --database-name vectorize --database-user vectorize
 
 # Redis: a machine we own, not `fly redis create` (that is Upstash, and it
 # is metered per command — three idle workers polling all day is a lot of
@@ -58,6 +66,12 @@ The workers reach it at `redis://vectorize-redis.internal:6379/0` — private
 network only, never exposed publicly, which is why it has no password.
 
 Note the connection strings. The workers need both; the API needs both.
+Set the workers' `DATABASE_URL` to the exact string the attach printed —
+one database, one user, shared. Do not attach the workers separately, for
+the reason in the comment above; and do not give them a user of their own
+either, because table privileges belong to whoever created the tables, so
+a second user reaches the right database and is then refused by every
+table the migrations made.
 
 ## 3. Secrets
 

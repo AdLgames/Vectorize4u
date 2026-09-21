@@ -177,23 +177,68 @@ jobs:
             sleep 10
           done
 
-          # Attach per app, not once: each gets its own database user, and
-          # each gets DATABASE_URL set on it. The workers write jobs,
-          # credits and usage, so they need it too — and app/config.py
-          # adopts DATABASE_URL and renames the driver, so nobody copies a
-          # connection string by hand.
+          # One database, one user, the same DATABASE_URL on every app.
+          #
+          # Attaching each app separately — which is what this did, and is
+          # the obvious reading of "every app needs the database" — gives
+          # each app its *own* database: `flyctl postgres attach` defaults
+          # both --database-name and --database-user to the name of the app
+          # doing the attaching. Nothing about that fails loudly. The API
+          # migrates and writes jobs into one database, the worker connects
+          # successfully to another, and its first query raises on a `jobs`
+          # table that was never created there. From outside, a preview sits
+          # in 'queued' and every machine looks healthy.
+          #
+          # So the API attaches to a database named for the *product*, and
+          # the workers are handed that same connection string. One user,
+          # not one per app, because table privileges belong to whoever
+          # created them: a per-app user would reach the right database and
+          # still be refused by every table the API's migrations made.
           set -o pipefail
+          SHARED_DB=vectorize
+          SHARED_USER=vectorize
+
+          # VEC_DB_SHARED marks an app as wired to the shared database, so
+          # re-running this stage is free rather than destructive.
+          wired="yes"
           for app in "$API_APP" $WORKER_APPS; do
-            if flyctl postgres attach "$DB_APP" -a "$app" --yes 2>&1 | tee /tmp/attach; then
-              echo "attached $DB_APP to $app"
-            elif grep -qiE "already|exists|duplicate" /tmp/attach; then
-              echo "$app is already attached — fine"
-            else
-              echo "could not attach the database to $app:"
-              cat /tmp/attach
+            flyctl secrets list -a "$app" 2>/dev/null | grep -q VEC_DB_SHARED || wired=""
+          done
+
+          if [ -n "$wired" ]; then
+            echo "every app already points at the $SHARED_DB database"
+          else
+            # Detach first: an app attached to its own database holds a
+            # DATABASE_URL that must not survive this. Detaching drops that
+            # app's generated user and its secret; $SHARED_DB is untouched.
+            for app in "$API_APP" $WORKER_APPS; do
+              flyctl postgres detach "$DB_APP" -a "$app" --yes > /dev/null 2>&1 || true
+            done
+
+            attach="$(flyctl postgres attach "$DB_APP" -a "$API_APP" \
+                        --database-name "$SHARED_DB" \
+                        --database-user "$SHARED_USER" --yes 2>&1 || true)"
+            # That output carries the password, so it is never printed raw.
+            echo "$attach" | sed -E 's#postgres://[^[:space:]]+#postgres://<redacted>#g'
+
+            url="$(printf '%s' "$attach" | grep -oE 'postgres://[^[:space:]"]+' | head -1)"
+            if [ -z "$url" ]; then
+              echo
+              echo "The attach printed no connection string, so the workers cannot be"
+              echo "given one. If it says the user or the database already exists, the"
+              echo "detach above did not take: remove VEC_DB_SHARED from every app and"
+              echo "run this stage again."
               exit 1
             fi
-          done
+
+            for app in $WORKER_APPS; do
+              flyctl secrets set -a "$app" --stage "DATABASE_URL=$url" > /dev/null
+              echo "$app now points at the same database as $API_APP"
+            done
+            for app in "$API_APP" $WORKER_APPS; do
+              flyctl secrets set -a "$app" --stage "VEC_DB_SHARED=$SHARED_DB" > /dev/null
+            done
+          fi
 
       - name: Generate the secrets nobody should have to invent
         run: |
@@ -455,12 +500,19 @@ jobs:
           started="$(echo "$machines" | jq '[.[] | select(.state == "started")] | length' 2>/dev/null || echo 0)"
           logs="$(flyctl logs -a "$LANE_APP" --no-tail 2>&1 | tail -300 || true)"
 
-          signal() { echo "$logs" | grep -c "$1" 2>/dev/null || true; }
+          signal() { echo "$logs" | grep -cE "$1" 2>/dev/null || true; }
           ready="$(signal 'celery@')"
           refused="$(signal 'Cannot connect to redis')"
           crashed="$(signal 'Traceback')"
           unsafe="$(signal 'unsafe configuration')"
-          consumed="$(signal 'Received task')"
+          # Celery's wording is "Task worker.tasks.vectorize_job[id] received",
+          # not "Received task". Grepping for the latter reported a worker that
+          # was consuming happily as one that had never started.
+          consumed="$(signal 'Task .* received')"
+          # A traceback through celery's trace.py is a *task* raising, which
+          # says nothing about booting. Telling the two apart matters: one is
+          # an image or configuration fault, the other is a bug in the job.
+          in_task="$(signal 'celery/app/trace.py')"
 
           echo "=============================================================="
           echo " $LANE_APP: $total machine(s), $started started"
@@ -484,6 +536,12 @@ jobs:
             echo "          healthy while the queue never drains. Check that"
             echo "          $REDIS_APP has a started machine, and that"
             echo "          VEC_REDIS_URL is set on $LANE_APP."
+          elif [ "$in_task" != "0" ]; then
+            echo " VERDICT: the worker is running and IS receiving the job. The task"
+            echo "          itself raises. Delivery, the broker and the image are all"
+            echo "          fine; the exception below is the whole fault. A failure in"
+            echo "          the first database call means this app is not looking at"
+            echo "          the same database as $API_APP."
           elif [ "$crashed" != "0" ]; then
             echo " VERDICT: the worker is raising on boot, before Celery prints its"
             echo "          banner — so it dies while importing, not while working."
@@ -509,12 +567,25 @@ jobs:
           if [ "$unsafe" != "0" ]; then
             echo "$logs" | grep 'unsafe configuration' | tail -2
           elif [ "$crashed" != "0" ]; then
-            # The last traceback, and the lines after it that carry the
-            # exception type and message.
+            # The last traceback — head *and* tail, never the first thirty
+            # lines. A Python traceback puts the exception type and message
+            # at the end, so truncating from the top prints frame after
+            # frame of library internals and drops the one line that says
+            # what went wrong. That cost a run of this workflow to learn.
             echo "$logs" | awk '
               /Traceback/ { start = NR }
               { line[NR] = $0 }
-              END { if (start) for (i = start; i <= NR && i < start + 30; i++) print line[i] }'
+              END {
+                if (!start) exit
+                n = NR - start + 1
+                if (n <= 32) {
+                  for (i = start; i <= NR; i++) print line[i]
+                  exit
+                }
+                for (i = start; i < start + 10; i++) print line[i]
+                printf "        ... %d frames elided ...\n", n - 30
+                for (i = NR - 19; i <= NR; i++) print line[i]
+              }'
           elif [ "$ready" = "0" ]; then
             echo "$logs" | tail -25
           fi
