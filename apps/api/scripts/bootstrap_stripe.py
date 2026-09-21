@@ -60,6 +60,18 @@ def client():  # type: ignore[no-untyped-def]
     return stripe, key.startswith("sk_live_")
 
 
+def fields(obj) -> dict:  # type: ignore[no-untyped-def]
+    """A Stripe resource as a plain dict.
+
+    stripe-python resources support `obj["x"]` but *not* `obj.get("x")` —
+    the latter raises, telling you to call `.to_dict()`. That distinction
+    cost a run of the stripe stage, after it had already created every
+    product, price and the webhook endpoint.
+    """
+    to_dict = getattr(obj, "to_dict", None)
+    return to_dict() if callable(to_dict) else dict(obj)
+
+
 def find_product(stripe, plan: str):  # type: ignore[no-untyped-def]
     for product in stripe.Product.search(query=f'metadata["{TAG}"]:"{plan}"').auto_paging_iter():
         return product
@@ -68,7 +80,7 @@ def find_product(stripe, plan: str):  # type: ignore[no-untyped-def]
 
 def find_price(stripe, product_id: str, item: Product):  # type: ignore[no-untyped-def]
     for price in stripe.Price.list(product=product_id, active=True, limit=100).auto_paging_iter():
-        recurring = price.get("recurring")
+        recurring = fields(price).get("recurring")
         wants_recurring = item.is_subscription
         if bool(recurring) != wants_recurring:
             continue
@@ -77,7 +89,7 @@ def find_price(stripe, product_id: str, item: Product):  # type: ignore[no-untyp
     return None
 
 
-def ensure_webhook(stripe, url: str) -> tuple[str, str | None]:  # type: ignore[no-untyped-def]
+def ensure_webhook(stripe, url: str, *, recreate: bool = False) -> tuple[str, str | None]:  # type: ignore[no-untyped-def]
     """Register the endpoint, subscribed to exactly the events we handle.
 
     Imported from the handler rather than restated: an endpoint subscribed
@@ -95,7 +107,18 @@ def ensure_webhook(stripe, url: str) -> tuple[str, str | None]:  # type: ignore[
     events = sorted(HANDLED)
     for endpoint in stripe.WebhookEndpoint.list(limit=100).auto_paging_iter():
         if endpoint["url"] == url:
-            missing = sorted(set(events) - set(endpoint.get("enabled_events") or []))
+            if recreate:
+                # Only when the caller has established that nothing holds
+                # this endpoint's secret — an endpoint whose secret is lost
+                # verifies nothing, so replacing it costs nothing, and it is
+                # the only way to obtain a secret without a human in a
+                # dashboard. Deleting one that *is* in use would silently
+                # stop every paid event, so the decision is never made here.
+                stripe.WebhookEndpoint.delete(endpoint["id"])
+                print(f"  replaced webhook {endpoint['id']} (its secret was unrecoverable)")
+                break
+            have = fields(endpoint).get("enabled_events") or []
+            missing = sorted(set(events) - set(have))
             if missing:
                 stripe.WebhookEndpoint.modify(endpoint["id"], enabled_events=events)
                 print(f"  updated webhook  {endpoint['id']} (added {', '.join(missing)})")
@@ -109,7 +132,7 @@ def ensure_webhook(stripe, url: str) -> tuple[str, str | None]:  # type: ignore[
         description="Vectorize4u — created by scripts/bootstrap_stripe.py",
     )
     print(f"  created webhook  {created['id']} ({len(events)} events)")
-    return created["id"], created.get("secret")
+    return created["id"], fields(created).get("secret")
 
 
 def main() -> int:
@@ -144,6 +167,13 @@ def _run() -> int:
         "--webhook-url",
         default=os.environ.get("VEC_STRIPE_WEBHOOK_URL", ""),
         help="register a webhook endpoint at this URL, e.g. https://api.example/v1/stripe/webhook",
+    )
+    parser.add_argument(
+        "--recreate-webhook",
+        action="store_true",
+        help="replace an existing endpoint at that URL. Only pass this when "
+        "nothing holds its signing secret: Stripe returns one at creation only, "
+        "so an endpoint whose secret was lost can never be used again.",
     )
     parser.add_argument(
         "--emit",
@@ -199,7 +229,7 @@ def _run() -> int:
     webhook_secret: str | None = None
     if args.webhook_url:
         print()
-        _, webhook_secret = ensure_webhook(stripe, args.webhook_url)
+        _, webhook_secret = ensure_webhook(stripe, args.webhook_url, recreate=args.recreate_webhook)
         if webhook_secret is None:
             print(
                 "  (that endpoint already existed, so Stripe did not hand back its\n"

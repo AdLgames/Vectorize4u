@@ -249,13 +249,41 @@ def test_checkout_refuses_cleanly_when_payments_are_off(client, auth, monkeypatc
 # -- the bootstrap's webhook registration (runs from Actions, §payments) ----
 
 
+class _Resource:
+    """A Stripe resource, including the part that matters: no `.get`.
+
+    stripe-python supports `obj["x"]` and raises on `obj.get("x")`, telling
+    you to call `.to_dict()`. Stubbing these as plain dicts made the tests
+    pass against code that could not work, and the stripe stage got as far
+    as creating every product, price and the webhook endpoint before
+    failing on exactly that. A stub looser than the real thing is worse
+    than no stub, so this one refuses `.get` the same way.
+    """
+
+    def __init__(self, **values: object) -> None:
+        self._values = dict(values)
+
+    def __getitem__(self, key: str) -> object:
+        return self._values[key]
+
+    def to_dict(self) -> dict:
+        return dict(self._values)
+
+    def get(self, *_args: object, **_kwargs: object):
+        raise AttributeError(
+            "'get' is a dict method, but a WebhookEndpoint is not a dict. "
+            "Use .to_dict() to convert it."
+        )
+
+
 class _StubWebhooks:
-    """Enough of stripe.WebhookEndpoint to exercise the three paths."""
+    """Enough of stripe.WebhookEndpoint to exercise every path."""
 
     def __init__(self, existing: list[dict]) -> None:
-        self.existing = existing
+        self.existing = [_Resource(**item) for item in existing]
         self.created: list[dict] = []
         self.modified: list[tuple[str, list[str]]] = []
+        self.deleted: list[str] = []
 
     # The script calls .list(...).auto_paging_iter()
     def list(self, **_: object) -> _StubWebhooks:
@@ -264,14 +292,19 @@ class _StubWebhooks:
     def auto_paging_iter(self):
         return iter(self.existing)
 
-    def create(self, **kwargs: object) -> dict:
+    def create(self, **kwargs: object) -> _Resource:
         made = {"id": "we_new", "secret": "whsec_fresh", **kwargs}
         self.created.append(made)
-        return made
+        return _Resource(**made)
 
-    def modify(self, endpoint_id: str, **kwargs: object) -> dict:
+    def modify(self, endpoint_id: str, **kwargs: object) -> _Resource:
         self.modified.append((endpoint_id, list(kwargs.get("enabled_events") or [])))
-        return {"id": endpoint_id}
+        return _Resource(id=endpoint_id)
+
+    def delete(self, endpoint_id: str) -> _Resource:
+        self.deleted.append(endpoint_id)
+        self.existing = [e for e in self.existing if e["id"] != endpoint_id]
+        return _Resource(id=endpoint_id, deleted=True)
 
 
 class _StubStripe:
@@ -348,3 +381,36 @@ def test_a_webhook_for_another_url_is_not_mistaken_for_ours():
 
     assert endpoint_id == "we_new" and secret == "whsec_fresh"
     assert stripe.WebhookEndpoint.modified == [], "it modified another deployment's endpoint"
+
+
+def test_fields_reads_a_resource_that_refuses_get():
+    """The helper exists because Stripe resources are not dicts."""
+    resource = _Resource(id="we_1", secret="whsec_x", enabled_events=["a"])
+
+    with pytest.raises(AttributeError):
+        resource.get("secret")  # what the script used to do
+
+    assert _bootstrap().fields(resource)["secret"] == "whsec_x"
+
+
+def test_recreate_replaces_an_endpoint_whose_secret_was_lost():
+    """Stripe returns a signing secret once. If it was never stored, the
+    endpoint can never verify anything, so replacing it costs nothing —
+    and is the only way to get a secret without a human in a dashboard."""
+    stripe = _StubStripe([{"id": "we_orphan", "url": URL, "enabled_events": []}])
+
+    endpoint_id, secret = _bootstrap().ensure_webhook(stripe, URL, recreate=True)
+
+    assert stripe.WebhookEndpoint.deleted == ["we_orphan"]
+    assert endpoint_id == "we_new" and secret == "whsec_fresh"
+
+
+def test_recreate_is_never_the_default():
+    """Deleting an endpoint that *is* in use stops every paid event."""
+    from app.routers.stripe_webhooks import HANDLED
+
+    stripe = _StubStripe([{"id": "we_live", "url": URL, "enabled_events": sorted(HANDLED)}])
+
+    _bootstrap().ensure_webhook(stripe, URL)
+
+    assert stripe.WebhookEndpoint.deleted == [], "a re-run deleted a working endpoint"
