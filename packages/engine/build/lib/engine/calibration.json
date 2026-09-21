@@ -1,0 +1,14 @@
+{
+  "_comment": "k_class for node_baseline (§3.6). Calibrated in Phase 1 against benchmarks/corpus. node_baseline = k_class * edge_pixel_count(reference) / 1000. Regenerate with `make calibrate`; any change bumps score_version.",
+  "calibrated_at": "phase-1-bootstrap",
+  "k_class": {
+    "LOGO_FLAT": 2.0,
+    "LOGO_GRADIENT": 3.0,
+    "LINE_ART": 2.5,
+    "SKETCH": 4.0,
+    "ILLUSTRATION": 3.5,
+    "PHOTO": 8.0,
+    "SCREENSHOT": 2.5
+  },
+  "default_k": 3.0
+}
