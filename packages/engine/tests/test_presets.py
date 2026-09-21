@@ -114,3 +114,67 @@ def test_despeckle_is_clamped_to_the_tracer_range():
 def test_no_despeckle_leaves_the_presets_alone():
     tuned = candidates_for(_profile(), Options(quality_tier="max"), _image())
     assert {p.filter_speckle for p in tuned} != {4}
+
+
+# -- two-tone logos reach the bilevel tracer (§3.4) -------------------------
+
+
+def _two_tone(size=(120, 200), *, aliased=True) -> np.ndarray:
+    """A black shape on white, with the hard edges of a low-res export."""
+    h, w = size
+    rgba = np.full((h, w, 4), 255, dtype=np.uint8)
+    rgba[:, :, 3] = 255
+    yy, xx = np.mgrid[0:h, 0:w]
+    inside = ((yy - h / 2) / (h / 2.5)) ** 2 + ((xx - w / 2) / (w / 2.5)) ** 2 <= 1.0
+    rgba[inside, :3] = 0
+    if not aliased:
+        rgba[:, :, :3] = np.clip(rgba[:, :, :3].astype(int) + 40, 0, 255).astype(np.uint8)
+    return rgba
+
+
+def _coloured() -> np.ndarray:
+    rgba = _two_tone()
+    # Same shape, but the ink is red: potrace would discard the colour.
+    dark = rgba[:, :, 0] == 0
+    rgba[dark] = (200, 30, 30, 255)
+    return rgba
+
+
+def test_a_two_tone_logo_is_offered_the_bilevel_tracer():
+    """LOGO_FLAT never reached potrace, whatever the image looked like.
+
+    A black-and-white logo classified LOGO_FLAT was traced only by the
+    colour tracer, which follows every pixel step of an aliased edge. On a
+    real one that cost 1279 nodes against potrace's 494, and scored lower
+    on the engine's own metric — a better result the search was never
+    allowed to see.
+    """
+    picked = candidates_for(_profile(), Options(), _two_tone())
+    engines = {p.engine for p in picked}
+    assert "potrace" in engines, "a two-tone logo must be offered the bilevel tracer"
+    assert "vtracer" in engines, "and still the colour tracer, which may yet win"
+
+
+def test_a_coloured_logo_is_not():
+    """potrace flattens to one ink colour, so offering it here spends a
+    candidate slot on a result that cannot win."""
+    picked = candidates_for(_profile(), Options(), _coloured())
+    assert {p.engine for p in picked} == {"vtracer"}
+
+
+def test_the_class_first_choice_survives_the_reordering():
+    """Inserting potrace early must not push the class preset out of the
+    budget: the point is to try both engines, not to swap one for another."""
+    picked = candidates_for(_profile(), Options(), _two_tone())
+    assert picked[0].engine == "vtracer"
+    assert picked[0].label == "flat-balanced"
+
+
+def test_a_photograph_is_never_called_two_tone():
+    rng = np.random.default_rng(0)
+    noisy = np.dstack(
+        [rng.integers(0, 255, (80, 80), dtype=np.uint8) for _ in range(3)]
+        + [np.full((80, 80), 255, dtype=np.uint8)]
+    )
+    picked = candidates_for(_profile("PHOTO", 0.9), Options(), noisy)
+    assert {p.engine for p in picked} == {"vtracer"}
