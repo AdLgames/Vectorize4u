@@ -203,7 +203,12 @@ class Settings(BaseSettings):
             problems.append("VEC_STRIPE_WEBHOOK_SECRET is not configured")
         if not self.stripe_secret_key:
             problems.append("VEC_STRIPE_SECRET_KEY is not configured")
-        if self.stripe_secret_key.startswith("sk_test_"):
+        if self.stripe_secret_key.startswith("sk_test_") and self.environment == "prod":
+            # Only prod. `is_production` covers staging too, because the two
+            # harden identically — but a test key in staging is the point of
+            # staging, and refusing it made the API refuse to boot there.
+            # Nothing said so: the machine simply failed its health checks
+            # and the deploy timed out seven minutes later.
             problems.append("VEC_STRIPE_SECRET_KEY is a test key")
         missing = [p for p in ("pack", "starter", "pro") if not self.stripe_prices.get(p)]
         if missing:
