@@ -1,0 +1,62 @@
+{
+  "alpha_binary.png": {
+    "defects": 66,
+    "roughness": 0.899
+  },
+  "alpha_dark_straight.png": {
+    "defects": 0,
+    "roughness": 1.0
+  },
+  "alpha_premultiplied.png": {
+    "defects": 0,
+    "roughness": 1.0
+  },
+  "batman_real.gif": {
+    "defects": 5,
+    "roughness": 2.244
+  },
+  "cmyk_jpeg.jpg": {
+    "defects": 0,
+    "roughness": 1.268
+  },
+  "edge.png": {
+    "defects": 0,
+    "roughness": 1.773
+  },
+  "exif_rotated.jpg": {
+    "defects": 0,
+    "roughness": 1.271
+  },
+  "line_art.png": {
+    "defects": 0,
+    "roughness": 1.624
+  },
+  "logo_flat.png": {
+    "defects": 0,
+    "roughness": 1.001
+  },
+  "logo_flat_jpeg_artifacts.jpg": {
+    "defects": 0,
+    "roughness": 1.027
+  },
+  "logo_flat_small.png": {
+    "defects": 0,
+    "roughness": 1.353
+  },
+  "logo_gradient.png": {
+    "defects": 7,
+    "roughness": 1.1
+  },
+  "photo.jpg": {
+    "defects": 35,
+    "roughness": 1.7
+  },
+  "screenshot.png": {
+    "defects": 166,
+    "roughness": 1.813
+  },
+  "sketch.png": {
+    "defects": 107,
+    "roughness": 1.717
+  }
+}

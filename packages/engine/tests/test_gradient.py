@@ -162,3 +162,43 @@ def test_an_explicit_level_still_wins_over_the_floor():
     )
     assert _smoothing_for(Options(smoothing=0), winner, doc) == 0
     assert _smoothing_for(Options(smoothing=3), winner, doc) == 3
+
+
+def test_the_gradient_tracer_is_not_attempted_on_a_flat_result():
+    """It can only win where it would replace a stack of bands, so that is
+    the only place it is tried.
+
+    Attempted on every conversion it cost a connected-components pass and a
+    distance transform over the full image before declining: measured
+    across the corpus, median job time went 4.1s -> 6.8s and p95 to 9.1s,
+    which pushes work past the 8s sync window for no possible benefit.
+    """
+    from engine.pipeline import _banded
+    from engine.types import Candidate, Params, ScoreVector
+
+    def candidate(paths: int) -> Candidate:
+        return Candidate(
+            params=Params(),
+            svg="<svg/>",
+            score=ScoreVector(
+                ssim=0.9, color=0.9, edge_f1=0.9, alpha_iou=None,
+                node_term=0.5, path_term=0.5, fidelity=0.9, total=0.9,
+                nodes=100, paths=paths, score_version="s3",
+            ),
+            duration_ms=1,
+            exit_status=0,
+        )
+
+    assert not _banded([candidate(1), candidate(8)])
+    assert _banded([candidate(4), candidate(460)])
+
+
+def test_a_failed_candidate_does_not_count_as_banded():
+    """A crashed trace has no score, and reading one would raise."""
+    from engine.pipeline import _banded
+    from engine.types import Candidate, Params
+
+    failed = Candidate(
+        params=Params(), svg=None, score=None, duration_ms=0, exit_status=1
+    )
+    assert not _banded([failed])

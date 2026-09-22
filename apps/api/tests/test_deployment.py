@@ -365,10 +365,14 @@ def test_the_bucket_lets_a_browser_upload():
     assert "put_bucket_cors" in body
     assert '"PUT"' in body, "the upload is a PUT; allowing GET alone changes nothing"
 
-    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
-    steps = yaml.dump(workflow["jobs"]["r2"]["steps"])
-    assert "r2_cors.py --apply" in steps, "it must be appliable without a terminal"
-    assert "r2_lifecycle.py --apply" in steps, (
+    # Against the file, not against yaml.dump of it: dump re-wraps long
+    # lines at 80 columns and split this very command between "r2_cors.py"
+    # and "--apply", failing on a workflow that was correct.
+    workflow_text = (ROOT / ".github/workflows/deploy.yml").read_text()
+    workflow = yaml.safe_load(workflow_text)
+    assert "r2" in workflow["jobs"]
+    assert "r2_cors.py --apply" in workflow_text, "it must be appliable without a terminal"
+    assert "r2_lifecycle.py --apply" in workflow_text, (
         "the retention backstop is applied by nothing else either"
     )
 
@@ -418,3 +422,25 @@ def test_the_live_check_reads_headers_case_insensitively():
     # Must not raise: the bucket in this test is configured correctly.
     verify_live._browser_may_upload(url, "https://example.test")
     server.server_close()
+
+
+def test_the_visual_gate_exists_and_can_fail():
+    """Fidelity and machine defects both passed a result that shipped
+    visibly stair-stepped, because neither measures the shape of the
+    output. A gate that cannot fail is not a gate.
+    """
+    script = ROOT / "benchmarks/visual.py"
+    assert script.exists(), "nothing measures whether the output looks right"
+
+    body = script.read_text()
+    assert "MAX_ROUGHNESS" in body, "no roughness gate"
+    assert "return 1" in body, "it must exit non-zero, or no deploy can gate on it"
+    assert "contact_sheet" in body, (
+        "the measurable part is a proxy; a human still has to see the artwork"
+    )
+
+    budget = ROOT / "benchmarks/visual_budget.json"
+    assert budget.exists(), "no recorded budget to regress against"
+
+    makefile = (ROOT / "Makefile").read_text()
+    assert "visual:" in makefile and "visual-accept:" in makefile

@@ -63,9 +63,16 @@ def remove_slivers(
     kept: list[Path] = []
     dropped = 0
 
-    def worth_keeping(area: float, box: tuple[float, float, float, float], floor: float) -> bool:
+    def worth_keeping(area: float, shape: SubPath | Path, floor: float) -> bool:
+        # The bounding box is computed only when the area test has already
+        # failed. Passed as an argument it was built for every subpath of
+        # every path — each one walking all of its points — and a photo
+        # trace has 8,646 paths. The exemption it feeds is rare; the walk
+        # was not.
+        if area >= floor:
+            return True
         # small glyph counters are the point, not noise
-        return area >= floor or _in_text_region(box, text_boxes)
+        return _in_text_region(shape.bbox(), text_boxes)
 
     for p in doc.paths:
         # Subpaths first. A path's area is the sum of its subpaths, so a
@@ -79,9 +86,7 @@ def remove_slivers(
         # *small* subpath is usually artwork — a sketch's strokes are all
         # small — while a degenerate one never is.
         survivors = [
-            sp
-            for sp in p.subpaths
-            if worth_keeping(abs(sp.area()), sp.bbox(), min_subpath_area)
+            sp for sp in p.subpaths if worth_keeping(abs(sp.area()), sp, min_subpath_area)
         ]
         if not survivors:
             # The whole path is a sliver. One removal, not one per subpath.
@@ -93,7 +98,7 @@ def remove_slivers(
 
         dropped += len(p.subpaths) - len(survivors)
         p.subpaths = survivors
-        if worth_keeping(p.area(), p.bbox(), min_area):
+        if worth_keeping(p.area(), p, min_area):
             kept.append(p)
         else:
             dropped += 1
@@ -404,17 +409,23 @@ def postprocess(
     # and refitting a staircase spends nodes describing steps this is about
     # to remove. Measured on the real logo, smoothing first left 202 nodes
     # where the unsmoothed trace needed 494 for a worse-looking curve.
-    level = auto_level(doc) if smoothing is None else smoothing
-    if level > 0:
-        if doc.path_count() > config.SMOOTH_MAX_PATHS:
+    # The refusal is checked first, and deliberately. Deciding the level
+    # means flattening every contour and walking it in Python, and on the
+    # documents that get refused there are the most contours to walk: a
+    # photo trace is 86,000 nodes. Measured, that put 15.3s of a 29s job
+    # into post-processing to compute a number that was then thrown away.
+    if doc.path_count() > config.SMOOTH_MAX_PATHS:
+        if smoothing is None or smoothing > 0:
             warnings.append(Warning_.SMOOTHING_SKIPPED_BANDED.value)
-        else:
-            diag = math.hypot(doc.width, doc.height)
-            doc, smoothed = smooth_doc(
-                doc, level, tolerance=config.SMOOTH_FIT_TOLERANCE * diag
-            )
-            if smoothed:
-                steps.append(f"smoothed:{level}{'' if smoothing is not None else ':auto'}")
+        level = 0
+    else:
+        level = auto_level(doc) if smoothing is None else smoothing
+
+    if level > 0:
+        diag = math.hypot(doc.width, doc.height)
+        doc, smoothed = smooth_doc(doc, level, tolerance=config.SMOOTH_FIT_TOLERANCE * diag)
+        if smoothed:
+            steps.append(f"smoothed:{level}{'' if smoothing is not None else ':auto'}")
 
     score = baseline_score
     if simplify_enabled and doc.node_count() > config.SIMPLIFY_MAX_NODES:

@@ -151,7 +151,7 @@ def _colour_position(lab: np.ndarray, ys: np.ndarray, xs: np.ndarray) -> np.ndar
     span = float(t.max() - t.min())
     if span <= 1e-6:
         return None
-    return (t - t.min()) / span
+    return np.asarray((t - t.min()) / span, dtype=np.float64)
 
 
 def _fit_linear(
