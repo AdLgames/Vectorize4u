@@ -19,3 +19,8 @@ benchmarks/ab/out/
 dev.db
 ci.db
 benchmarks/acceptance/out/
+
+# Coverage data: a local artifact that changes on every test run, so
+# tracking it puts a binary diff in commits that have nothing to do with it.
+.coverage
+.coverage.*
