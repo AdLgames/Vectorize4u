@@ -58,6 +58,12 @@ SMOOTH_FIT_TOLERANCE = _float("ENGINE_SMOOTH_FIT_TOLERANCE", 0.0008)
 # banding it was asked to fix. Flat artwork, which is what smoothing is
 # for, is a handful of paths.
 SMOOTH_MAX_PATHS = _int("ENGINE_SMOOTH_MAX_PATHS", 32)
+# Below this much excess turning the outline is not stepped, and
+# smoothing it would only round off artwork. Clean logos measure
+# 0.90-1.03 and the noisiest legitimate artwork 1.81; the aliased
+# files start at 17.4, so the gap is wide and the threshold sits in
+# the middle of it rather than against either edge.
+SMOOTH_AUTO_MIN_TURNS = _float("ENGINE_SMOOTH_AUTO_MIN_TURNS", 6.0)
 
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)

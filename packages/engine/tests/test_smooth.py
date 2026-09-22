@@ -131,3 +131,30 @@ def test_rdp_indices_match_the_points_they_name():
     idx = _rdp_indices(pts, 1.0)
     assert idx[0] == 0 and idx[-1] == len(pts) - 1
     assert idx == sorted(set(idx))
+
+
+def test_a_clean_shape_is_left_alone_by_auto():
+    """Clean vector-like logos measure 0.90-1.03 turns per shape. Smoothing
+    one would only round off artwork."""
+    from engine.smooth import auto_level
+
+    assert auto_level(_doc(_square())) == 0
+
+
+def test_a_staircase_is_picked_up_by_auto():
+    """The case the customer complained about: a low-resolution outline
+    that turns far more than its shape requires."""
+    from engine.smooth import auto_level, turning_per_shape
+
+    doc = _doc(_staircase())
+    assert turning_per_shape(doc) > config.SMOOTH_AUTO_MIN_TURNS
+    assert auto_level(doc) > 0
+
+
+def test_turning_counts_a_clean_closed_shape_as_one_revolution():
+    """The metric's anchor: a closed contour turns through 360° exactly
+    once, so anything above 1 is the outline turning more than its shape
+    requires — which is what makes the threshold mean something."""
+    from engine.smooth import turning_per_shape
+
+    assert 0.8 <= turning_per_shape(_doc(_square())) <= 1.2

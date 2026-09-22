@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from engine.geom import Point
+from engine.smooth import _dense
 from engine.svgdoc import SubPath, SvgDoc
 
 # Vinyl blades and laser kerfs sit around 0.2-0.5 mm, and a cutter that is
@@ -77,6 +78,17 @@ def _self_intersects(pts: list[Point], closed: bool) -> Point | None:
     leave the check switched on. Segments are bucketed by the cells their
     bounding box covers, so only plausible neighbours are compared.
     """
+    # A closed contour is usually flattened with its start point repeated
+    # at the end. Left in place it makes a zero-length final segment, and
+    # then the ring's genuinely adjacent first and last real segments are
+    # `n - 2` apart rather than `n - 1`, so the adjacency test misses them
+    # and reports a crossing where two segments merely meet. That fired on
+    # every clean benchmark logo — one phantom crossing each, always at
+    # the contour's own start point.
+    pts = list(pts)
+    while closed and len(pts) > 2 and pts[0] == pts[-1]:
+        pts.pop()
+
     n = len(pts)
     if n < 4:
         return None
@@ -176,7 +188,13 @@ def inspect_subpath(
             if angle < MIN_ANGLE_DEGREES:
                 add(Defect.SPIKE, f"{angle:.1f}° spike, too sharp to cut", pts[i])
 
-    crossing = _self_intersects(pts, sp.closed)
+    # On the flattened outline, not the anchor polygon. The anchors of a
+    # perfectly ordinary curved shape can cross while its curves do not:
+    # checked against the anchors, the clean 29-node benchmark logo
+    # reported five crossings and a 9-node one reported one. A check that
+    # cries wolf on clean artwork is worse than no check.
+    outline = _dense(sp, max(0.25, _min_width(pts) / 200.0))
+    crossing = _self_intersects(outline, sp.closed)
     if crossing is not None:
         add(Defect.SELF_INTERSECTION, "the outline crosses itself", crossing)
 

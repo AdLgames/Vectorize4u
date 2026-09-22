@@ -93,7 +93,7 @@ export type JobOptions = {
   simplify?: boolean;
   keep_background?: boolean;
   despeckle?: number;
-  smoothing?: number;
+  smoothing?: number | null;
   alpha_mode?: "auto" | "straight" | "premultiplied";
   output_width?: number | null;
   output_height?: number | null;

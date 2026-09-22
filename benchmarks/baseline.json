@@ -1,14 +1,14 @@
 {
-  "engine_version": "0.1.0+7242dd01c9c6",
+  "engine_version": "0.1.0+85d4f60631a6",
   "images": {
     "alpha_binary": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 3773,
-      "fidelity": 0.84744,
+      "elapsed_ms": 2941,
+      "fidelity": 0.85276,
       "label": "LOGO_FLAT",
-      "nodes": 177,
+      "nodes": 366,
       "paths": 5,
-      "total": 0.79054,
+      "total": 0.79248,
       "warnings": [
         "source_resolution_low",
         "physical_size_assumed"
@@ -16,7 +16,7 @@
     },
     "alpha_dark_straight": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 3666,
+      "elapsed_ms": 2569,
       "fidelity": 0.99433,
       "label": "LOGO_FLAT",
       "nodes": 9,
@@ -29,7 +29,7 @@
     },
     "alpha_premultiplied": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 3528,
+      "elapsed_ms": 2539,
       "fidelity": 0.99417,
       "label": "LOGO_FLAT",
       "nodes": 9,
@@ -43,12 +43,12 @@
     },
     "cmyk_jpeg": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 4941,
-      "fidelity": 0.99907,
+      "elapsed_ms": 4237,
+      "fidelity": 0.99179,
       "label": "LOGO_FLAT",
-      "nodes": 1168,
+      "nodes": 32,
       "paths": 5,
-      "total": 0.90522,
+      "total": 0.9204,
       "warnings": [
         "cmyk_converted",
         "source_resolution_low",
@@ -58,12 +58,12 @@
     },
     "exif_rotated": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 4199,
-      "fidelity": 0.99272,
+      "elapsed_ms": 3417,
+      "fidelity": 0.97146,
       "label": "LOGO_FLAT",
-      "nodes": 995,
+      "nodes": 33,
       "paths": 5,
-      "total": 0.90015,
+      "total": 0.90209,
       "warnings": [
         "exif_rotated",
         "source_resolution_low",
@@ -73,7 +73,7 @@
     },
     "line_art": {
       "classification": "LINE_ART",
-      "elapsed_ms": 5998,
+      "elapsed_ms": 4526,
       "fidelity": 0.96694,
       "label": "LINE_ART",
       "nodes": 205,
@@ -86,50 +86,49 @@
     },
     "logo_flat": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 5183,
-      "fidelity": 0.98449,
+      "elapsed_ms": 4281,
+      "fidelity": 0.98627,
       "label": "LOGO_FLAT",
-      "nodes": 27,
+      "nodes": 29,
       "paths": 5,
-      "total": 0.91934,
+      "total": 0.91965,
       "warnings": [
         "physical_size_assumed"
       ]
     },
     "logo_flat_jpeg_artifacts": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 5839,
-      "fidelity": 0.98029,
+      "elapsed_ms": 4520,
+      "fidelity": 0.98265,
       "label": "LOGO_FLAT",
-      "nodes": 29,
+      "nodes": 31,
       "paths": 5,
-      "total": 0.91599,
+      "total": 0.91684,
       "warnings": [
         "physical_size_assumed"
       ]
     },
     "logo_flat_small": {
       "classification": "LOGO_FLAT",
-      "elapsed_ms": 1464,
-      "fidelity": 0.9993,
+      "elapsed_ms": 1379,
+      "fidelity": 0.98547,
       "label": "LOGO_FLAT",
-      "nodes": 594,
+      "nodes": 31,
       "paths": 5,
-      "total": 0.90523,
+      "total": 0.90753,
       "warnings": [
         "source_resolution_low",
-        "simplify_stopped_early",
         "physical_size_assumed"
       ]
     },
     "logo_gradient": {
       "classification": "LOGO_GRADIENT",
-      "elapsed_ms": 5312,
-      "fidelity": 0.90064,
+      "elapsed_ms": 4034,
+      "fidelity": 0.89674,
       "label": "LOGO_GRADIENT",
-      "nodes": 175,
+      "nodes": 80,
       "paths": 12,
-      "total": 0.83033,
+      "total": 0.83207,
       "warnings": [
         "gradients_banded",
         "source_resolution_low",
@@ -139,7 +138,7 @@
     },
     "photo": {
       "classification": "PHOTO",
-      "elapsed_ms": 27464,
+      "elapsed_ms": 17962,
       "fidelity": 0.65842,
       "label": "PHOTO",
       "nodes": 86776,
@@ -153,25 +152,24 @@
     },
     "screenshot": {
       "classification": "SCREENSHOT",
-      "elapsed_ms": 5908,
-      "fidelity": 0.87928,
+      "elapsed_ms": 5138,
+      "fidelity": 0.86467,
       "label": "SCREENSHOT",
-      "nodes": 3444,
+      "nodes": 974,
       "paths": 289,
-      "total": 0.76495,
+      "total": 0.75923,
       "warnings": [
         "low_confidence_classification",
         "preprocess_backed_off",
-        "simplify_stopped_early",
         "physical_size_assumed"
       ]
     },
     "sketch": {
       "classification": "SKETCH",
-      "elapsed_ms": 5619,
-      "fidelity": 0.8082,
+      "elapsed_ms": 4608,
+      "fidelity": 0.80828,
       "label": "SKETCH",
-      "nodes": 709,
+      "nodes": 714,
       "paths": 1,
       "total": 0.76195,
       "warnings": [

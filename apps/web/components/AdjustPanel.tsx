@@ -30,6 +30,10 @@ export default function AdjustPanel({
   const [open, setOpen] = useState(false);
   const colors = options.max_colors ?? 12;
   const despeckle = options.despeckle ?? 4;
+  // Undefined means the engine chooses from the trace; 0 means the
+  // customer chose "off". Those are different answers and the panel has
+  // to be able to say which one is in force.
+  const smoothingAuto = options.smoothing === undefined || options.smoothing === null;
   const smoothing = options.smoothing ?? 0;
   const detailIndex = Math.max(
     1,
@@ -62,7 +66,7 @@ export default function AdjustPanel({
           {open
             ? "Hide"
             : `${colors} colours, detail ${detailIndex}${
-                smoothing ? `, smoothing ${smoothing}` : ""
+                smoothingAuto ? "" : `, smoothing ${smoothing}`
               }`}
         </span>
       </button>
@@ -99,20 +103,44 @@ export default function AdjustPanel({
               onChange({ ...options, detail: DETAIL_STEPS[value - 1] ?? "balanced" })
             }
           />
-          <Slider
-            id="smoothing"
-            label="Smooth out jagged edges"
-            display={smoothing === 0 ? "Off" : `${smoothing} of 10`}
-            help={
-              smoothing === 0
-                ? "Off: edges follow your file exactly, pixel steps included."
-                : "Rounds off the pixel staircase in a low-resolution source. The match score drops on purpose — it is measured against those steps."
-            }
-            min={0}
-            max={10}
-            value={smoothing}
-            onCommit={(value) => onChange({ ...options, smoothing: value })}
-          />
+          <div style={{ display: "grid", gap: 6 }}>
+            <Slider
+              id="smoothing"
+              label="Smooth out jagged edges"
+              display={
+                smoothingAuto ? "Automatic" : smoothing === 0 ? "Off" : `${smoothing} of 10`
+              }
+              help={
+                smoothingAuto
+                  ? "We pick this from your file: a low-resolution source comes back stepped, and this rounds the steps off. Drag to choose it yourself."
+                  : smoothing === 0
+                    ? "Off: edges follow your file exactly, pixel steps included."
+                    : "Rounds off the pixel staircase in a low-resolution source. The match score drops on purpose — it is measured against those steps."
+              }
+              min={0}
+              max={10}
+              value={smoothing}
+              onCommit={(value) => onChange({ ...options, smoothing: value })}
+            />
+            {!smoothingAuto && (
+              <button
+                type="button"
+                onClick={() => onChange({ ...options, smoothing: undefined })}
+                style={{
+                  justifySelf: "start",
+                  background: "transparent",
+                  border: 0,
+                  padding: 0,
+                  cursor: "pointer",
+                  fontSize: "var(--text-xs)",
+                  color: "var(--ink-500)",
+                  textDecoration: "underline",
+                }}
+              >
+                Choose it for me again
+              </button>
+            )}
+          </div>
           <Slider
             id="despeckle"
             label="Clean up specks"

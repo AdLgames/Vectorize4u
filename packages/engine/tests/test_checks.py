@@ -93,3 +93,33 @@ def test_inspect_subpath_reports_against_the_indices_it_is_given():
         subpath_index=7,
     )
     assert all(f.path == 3 and f.subpath == 7 for f in found)
+
+
+def test_a_repeated_closing_point_is_not_a_crossing():
+    """Flattening a closed contour usually repeats its start point at the
+    end. Left in place it makes a zero-length final segment, and then the
+    ring's genuinely adjacent first and last real segments sit `n - 2`
+    apart rather than `n - 1`, so the adjacency test misses them.
+
+    That fired on every clean benchmark logo — one phantom crossing each,
+    always at the contour's own start point, on artwork with nothing wrong
+    with it. A check that cries wolf on clean files is worse than none.
+    """
+    square = [(10.0, 10.0), (90.0, 10.0), (90.0, 90.0), (10.0, 90.0)]
+    doubled = SubPath(
+        start=square[0],
+        segments=[("L", (p,)) for p in square[1:] + [square[0]]],
+        closed=True,
+    )
+    assert inspect(_doc(doubled), width_mm=100) == []
+
+
+def test_a_real_crossing_still_reports_when_the_point_repeats():
+    """The other half: removing the duplicate must not blind the check."""
+    bowtie = [(0.0, 0.0), (100.0, 100.0), (100.0, 0.0), (0.0, 100.0)]
+    doubled = SubPath(
+        start=bowtie[0],
+        segments=[("L", (p,)) for p in bowtie[1:] + [bowtie[0]]],
+        closed=True,
+    )
+    assert Defect.SELF_INTERSECTION.value in _kinds(inspect(_doc(doubled), width_mm=100))
