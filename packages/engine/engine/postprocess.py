@@ -25,6 +25,7 @@ from engine.color import delta_e2000, from_hex, srgb_to_lab, to_hex
 from engine.geom import Point, collinear_merge, fit_error, fit_polyline, rdp
 from engine.raster import render_svg
 from engine.score import Scorer
+from engine.smooth import smooth_doc
 from engine.svgdoc import Path, SubPath, SvgDoc, serialize
 from engine.types import ScoreVector, Warning_
 
@@ -318,6 +319,7 @@ def postprocess(
     text_boxes: list[tuple[float, float, float, float]] | None = None,
     min_spacing_px: float = 0.0,
     simplify_enabled: bool = True,
+    smoothing: int = 0,
 ) -> PostProcessResult:
     steps: list[str] = []
     warnings: list[str] = []
@@ -325,6 +327,21 @@ def postprocess(
     doc, dropped = remove_slivers(doc, text_boxes or [])
     if dropped:
         steps.append(f"slivers_removed:{dropped}")
+
+    # Before simplification, not after: simplification refits the contour,
+    # and refitting a staircase spends nodes describing steps this is about
+    # to remove. Measured on the real logo, smoothing first left 202 nodes
+    # where the unsmoothed trace needed 494 for a worse-looking curve.
+    if smoothing > 0:
+        if doc.path_count() > config.SMOOTH_MAX_PATHS:
+            warnings.append(Warning_.SMOOTHING_SKIPPED_BANDED.value)
+        else:
+            diag = math.hypot(doc.width, doc.height)
+            doc, smoothed = smooth_doc(
+                doc, smoothing, tolerance=config.SMOOTH_FIT_TOLERANCE * diag
+            )
+            if smoothed:
+                steps.append(f"smoothed:{smoothing}")
 
     score = baseline_score
     if simplify_enabled and doc.node_count() > config.SIMPLIFY_MAX_NODES:

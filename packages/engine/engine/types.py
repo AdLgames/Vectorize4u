@@ -57,6 +57,7 @@ class Warning_(StrEnum):
     SIMPLIFY_STOPPED_EARLY = "simplify_stopped_early"
     SIMPLIFY_SKIPPED_LARGE = "simplify_skipped_large"
     NODE_SPACING_ENFORCED = "node_spacing_enforced"
+    SMOOTHING_SKIPPED_BANDED = "smoothing_skipped_banded"
 
 
 @dataclass(frozen=True)
@@ -203,7 +204,8 @@ class Options:
     # because a phone photo of a sign and a clean export need very
     # different amounts of speckle removal, and the difference is visible.
     despeckle: int | None = None
-    # How hard to smooth the pixel staircase before tracing, 0-10.
+    # How hard to smooth the traced contours, 0-10. Applied in §3.7, in
+    # contour space, where a pixel step and a drawn corner are separable.
     #
     # A tracer is faithful by construction: given a 545 px logo whose edges
     # are hard pixel steps, it returns those steps as geometry, and the

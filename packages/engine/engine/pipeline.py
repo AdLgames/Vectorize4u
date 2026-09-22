@@ -124,9 +124,7 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
     warnings += pre.warnings
 
     with timer("candidates"):
-        candidates = candidates_for(
-            profile, options, pre.trace_input, unsmoothed=pre.unsmoothed
-        )
+        candidates = candidates_for(profile, options, pre.trace_input)
 
     with timer("trace"), span("engine.trace_all", candidates=len(candidates)):
         traces = trace_all(pre.trace_input, candidates)
@@ -225,6 +223,7 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
             text_boxes=_text_boxes(pre.reference, profile),
             min_spacing_px=min_spacing_px,
             simplify_enabled=options.simplify,
+            smoothing=options.smoothing,
         )
     warnings += post.warnings
 

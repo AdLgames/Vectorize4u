@@ -42,12 +42,22 @@ SCORE_SIMPLIFY_MAX_SIDE = _int("ENGINE_SCORE_SIMPLIFY_MAX_SIDE", 512)
 UPSCALE_THRESHOLD_PX = _int("ENGINE_UPSCALE_THRESHOLD_PX", 600)
 PREPROCESS_SSIM_FLOOR = _float("ENGINE_PREPROCESS_SSIM_FLOOR", 0.85)
 
-# Smoothing (`Options.smoothing`, 0-10) as a blur radius, expressed as a
-# fraction of the trace input's width so a 500 px logo and a 4000 px one
-# smooth by the same visible amount. 1.5% at full strength: measured on a
-# 545 px aliased logo, that is where the stair-steps stop reading as steps.
-# Past it the artwork starts rounding off its own corners.
-SMOOTH_MAX_SIGMA_FRACTION = _float("ENGINE_SMOOTH_MAX_SIGMA_FRACTION", 0.015)
+# Smoothing (`Options.smoothing`, 0-10) as a filter window along the
+# contour, as a fraction of the image diagonal so a 500 px logo and a
+# 4000 px one round off by the same visible amount. 3% at full strength:
+# measured on a 545 px aliased logo, below about 1.5% the staircase
+# survives and the corner count wanders with the setting.
+SMOOTH_MAX_WINDOW_FRACTION = _float("ENGINE_SMOOTH_MAX_WINDOW_FRACTION", 0.03)
+# Refit tolerance for the smoothed contour, as a fraction of the diagonal.
+SMOOTH_FIT_TOLERANCE = _float("ENGINE_SMOOTH_FIT_TOLERANCE", 0.0008)
+# Above this many paths, smoothing is refused rather than applied.
+# A banded gradient is hundreds of stacked shapes that share their
+# boundaries; smoothing each contour on its own moves those boundaries
+# independently and they tear apart. Measured on a 460-path gradient
+# logo, the result was a visibly ragged, spiky edge — worse than the
+# banding it was asked to fix. Flat artwork, which is what smoothing is
+# for, is a handful of paths.
+SMOOTH_MAX_PATHS = _int("ENGINE_SMOOTH_MAX_PATHS", 32)
 
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)

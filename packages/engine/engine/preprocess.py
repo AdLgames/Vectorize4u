@@ -35,11 +35,6 @@ class Preprocessed:
     steps: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     quantized_colors: int = 0
-    # trace_input as it stood before `Options.smoothing` blurred it, and
-    # None when nothing did. Choosing a tracer asks what the artwork *is*,
-    # which a blur the caller asked for must not be allowed to answer: a
-    # smoothed two-tone logo still wants the bilevel tracer.
-    unsmoothed: np.ndarray | None = None
 
 
 def _ssim_rgb(a: np.ndarray, b: np.ndarray) -> float:
@@ -210,30 +205,6 @@ def preprocess(rgba: np.ndarray, profile: ImageProfile, options: Options) -> Pre
         steps.append("upscale:2x")
         warnings.append(Warning_.SOURCE_RESOLUTION_LOW.value)
 
-    # Smoothing, if the caller asked for it (§7.6).
-    #
-    # Applied to trace_input only, like the upscale above and for the same
-    # reason: the reference has to stay the image the customer sent, or the
-    # score stops meaning "how close is this to your file". Smoothing
-    # therefore *lowers* the reported score by design — it trades measured
-    # fidelity to an aliased source for artwork a person would rather cut.
-    #
-    # Before quantization, not after: blurring a staircase turns it into a
-    # ramp, and quantizing a ramp puts the boundary through its middle,
-    # which is the smooth edge we are after. The other order would blur the
-    # flat colours and hand the tracer a band to trace.
-    unsmoothed = None
-    if options.smoothing > 0:
-        level = min(10, max(0, int(options.smoothing)))
-        sigma = level / 10 * config.SMOOTH_MAX_SIGMA_FRACTION * trace_input.shape[1]
-        if sigma >= 0.5:
-            # Kernel wide enough that the tail is not clipped; odd, as
-            # OpenCV requires.
-            k = max(3, int(sigma * 6) | 1)
-            unsmoothed = trace_input
-            trace_input = cv2.GaussianBlur(trace_input, (k, k), sigma)
-            steps.append(f"smooth:{level}")
-
     quantized_colors = 0
     if cls in ("LOGO_FLAT", "SCREENSHOT", "LINE_ART") or options.max_colors:
         k = options.max_colors or profile.palette_size
@@ -247,5 +218,4 @@ def preprocess(rgba: np.ndarray, profile: ImageProfile, options: Options) -> Pre
         steps=steps,
         warnings=warnings,
         quantized_colors=quantized_colors,
-        unsmoothed=unsmoothed,
     )
