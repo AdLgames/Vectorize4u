@@ -85,6 +85,17 @@ GRADIENT_STOPS = _int("ENGINE_GRADIENT_STOPS", 12)
 # shaded logo, 0.884 against 0.816 — and on the other side of that trade,
 # 460 shapes and 619 machine defects against 16 shapes and none.
 GRADIENT_FIDELITY_MARGIN = _float("ENGINE_GRADIENT_FIDELITY_MARGIN", 0.10)
+# Smoothing applied to a gradient trace regardless of what the automatic
+# level would pick. Its contours are polygons traced around a pixel mask,
+# so they are stepped by construction — provenance, not a guess, which is
+# why this is a floor and not a threshold.
+#
+# The automatic level is calibrated on tracer output, where clean artwork
+# measures up to 1.81 turns per shape and aliased artwork starts at 17.4.
+# A gradient trace measures 5.38: stepped, plainly, but inside the gap the
+# threshold sits in — so it was selecting no smoothing at all, and the
+# stair-steps shipped. Found by looking at the deployed result.
+GRADIENT_SMOOTHING_FLOOR = _int("ENGINE_GRADIENT_SMOOTHING_FLOOR", 7)
 
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)

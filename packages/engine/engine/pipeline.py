@@ -235,7 +235,7 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
             text_boxes=_text_boxes(pre.reference, profile),
             min_spacing_px=min_spacing_px,
             simplify_enabled=options.simplify,
-            smoothing=options.smoothing,
+            smoothing=_smoothing_for(options, winner, doc),
         )
     warnings += post.warnings
 
@@ -304,6 +304,26 @@ def _min_spacing_px(doc: SvgDoc, profile: ImageProfile, options: Options) -> flo
         return 0.0
     px_per_mm = doc.width / size.width_mm
     return float(options.min_node_spacing_mm * px_per_mm)
+
+
+def _smoothing_for(options: Options, winner: Candidate, doc: SvgDoc) -> int | None:
+    """The smoothing level for this result, given what produced it.
+
+    A gradient trace's contours are traced around a pixel mask, so they
+    are stepped by construction. The automatic level is calibrated on
+    tracer output and reads this one at 5.38 turns per shape — stepped,
+    but inside the gap between clean artwork (up to 1.81) and aliased
+    (from 17.4), so it chose no smoothing and the steps shipped.
+
+    An explicit choice by the caller always wins, including 0.
+    """
+    if options.smoothing is not None:
+        return options.smoothing
+    if winner.params.engine != "gradient":
+        return None  # None means "decide from the trace"
+    from engine.smooth import auto_level
+
+    return max(auto_level(doc), config.GRADIENT_SMOOTHING_FLOOR)
 
 
 def _prefer_gradient_over_bands(winner: Candidate, usable: list[Candidate]) -> Candidate:
