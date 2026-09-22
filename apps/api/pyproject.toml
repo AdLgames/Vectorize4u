@@ -50,4 +50,10 @@ ignore_missing_imports = true
 warn_unused_ignores = false
 
 [tool.pytest.ini_options]
+# The package root goes on sys.path so `from tests.conftest import ...`
+# resolves however pytest is invoked. `python -m pytest` inserts the
+# working directory and the bare `pytest` binary does not, so the two
+# disagreed: local runs passed while CI, which runs the binary, failed
+# collection on three files for months of commits.
+pythonpath = ["."]
 testpaths = ["tests"]
