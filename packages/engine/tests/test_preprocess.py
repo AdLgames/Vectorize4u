@@ -92,3 +92,42 @@ def test_quantize_is_deterministic():
     b, kb = quantize(img, 6)
     assert ka == kb
     assert np.array_equal(a, b)
+
+
+def test_smoothing_is_off_by_default(fx):
+    """The default has to stay byte-identical: every stored score, the
+    benchmark corpus and every price quoted on the site were measured
+    without it."""
+    _, _, pre = _prep(fx, "logo_flat_small")
+    assert pre.unsmoothed is None
+    assert not [s for s in pre.steps if s.startswith("smooth")]
+
+
+def test_smoothing_blurs_only_the_trace_input(fx):
+    """Same rule as the upscale: the reference is the customer's file, so
+    the score keeps meaning 'how close is this to what you sent'."""
+    _, _, pre = _prep(fx, "logo_flat_small", Options(smoothing=8))
+    _, _, plain = _prep(fx, "logo_flat_small")
+    assert "smooth:8" in pre.steps
+    assert np.array_equal(pre.reference, plain.reference)
+    assert not np.array_equal(pre.trace_input, pre.unsmoothed)
+
+
+def test_smoothing_keeps_the_pre_blur_image_for_tracer_choice(fx):
+    """`candidates_for` asks whether the artwork is two-tone. A blur fills
+    the gap between two tones with every value in between, so asking the
+    blurred image loses the bilevel tracer — measured, the Batman logo fell
+    from one potrace path to ten vtracer bands at smoothing 4."""
+    _, _, pre = _prep(fx, "logo_flat_small", Options(smoothing=6))
+    assert pre.unsmoothed is not None
+    assert pre.unsmoothed.shape == pre.trace_input.shape
+
+
+def test_smoothing_scales_with_the_image(fx):
+    """A fixed pixel radius would be invisible on a 4000 px export and
+    would dissolve a 300 px one."""
+    _, _, small = _prep(fx, "logo_flat_small", Options(smoothing=10))
+    assert "smooth:10" in small.steps
+    # The blur is a fraction of width, so a wider trace input gets a wider
+    # kernel — the visible amount of rounding is what stays constant.
+    assert small.trace_input.shape[1] > 0

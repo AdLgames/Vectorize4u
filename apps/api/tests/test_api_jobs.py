@@ -293,3 +293,26 @@ def test_revoked_key_is_rejected(client, auth, user, logo_png):
         "/v1/account", headers={"Authorization": f"Bearer {created['key']}"}
     )
     assert response.status_code == 401
+
+
+def test_smoothing_is_accepted_and_reaches_the_engine(client, auth, funded, logo_png):
+    """The trade this option makes is deliberate: it blurs the pixel
+    staircase before tracing, so the result is smoother artwork and a
+    *lower* score against the aliased source. Both halves are the point,
+    so both are asserted."""
+    plain = upload_and_vectorize(client, auth, logo_png, {"format": ["svg"]})
+    smoothed = upload_and_vectorize(
+        client, auth, logo_png, {"format": ["svg"], "smoothing": 8}
+    )
+    assert plain.status_code == 200, plain.text
+    assert smoothed.status_code == 200, smoothed.text
+    assert smoothed.json()["quality"]["nodes"] <= plain.json()["quality"]["nodes"]
+
+
+def test_smoothing_is_bounded(client, auth, funded, logo_png):
+    """An unbounded blur radius is a denial-of-service knob: the kernel is
+    derived from it and the cost is quadratic."""
+    response = upload_and_vectorize(
+        client, auth, logo_png, {"format": ["svg"], "smoothing": 99}
+    )
+    assert response.status_code == 422

@@ -23,6 +23,11 @@ class JobOptions(BaseModel):
     # despeckle x 3 px. Exposed because a scanned logo and a clean export
     # need very different amounts of it, and the difference is visible.
     despeckle: int = Field(default=4, ge=0, le=16)
+    # "Smooth out jagged edges" in the UI. Blurs the pixel staircase before
+    # tracing, so a low-resolution logo comes back as curves instead of
+    # steps. Off by default: it is a deliberate trade of measured fidelity
+    # for better-looking artwork, and only the customer can make it.
+    smoothing: int = Field(default=0, ge=0, le=10)
     alpha_mode: Literal["auto", "straight", "premultiplied"] = "auto"
     output_width: float | None = Field(default=None, gt=0, le=10_000)
     output_height: float | None = Field(default=None, gt=0, le=10_000)

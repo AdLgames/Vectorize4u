@@ -124,7 +124,9 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
     warnings += pre.warnings
 
     with timer("candidates"):
-        candidates = candidates_for(profile, options, pre.trace_input)
+        candidates = candidates_for(
+            profile, options, pre.trace_input, unsmoothed=pre.unsmoothed
+        )
 
     with timer("trace"), span("engine.trace_all", candidates=len(candidates)):
         traces = trace_all(pre.trace_input, candidates)

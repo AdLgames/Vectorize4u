@@ -30,6 +30,7 @@ export default function AdjustPanel({
   const [open, setOpen] = useState(false);
   const colors = options.max_colors ?? 12;
   const despeckle = options.despeckle ?? 4;
+  const smoothing = options.smoothing ?? 0;
   const detailIndex = Math.max(
     1,
     DETAIL_STEPS.findIndex((d) => d === (options.detail ?? "balanced")) + 1,
@@ -58,7 +59,11 @@ export default function AdjustPanel({
       >
         <span>Adjust the trace</span>
         <span style={{ color: "var(--ink-500)", fontWeight: 400 }}>
-          {open ? "Hide" : `${colors} colours, detail ${detailIndex}`}
+          {open
+            ? "Hide"
+            : `${colors} colours, detail ${detailIndex}${
+                smoothing ? `, smoothing ${smoothing}` : ""
+              }`}
         </span>
       </button>
 
@@ -93,6 +98,20 @@ export default function AdjustPanel({
             onCommit={(value) =>
               onChange({ ...options, detail: DETAIL_STEPS[value - 1] ?? "balanced" })
             }
+          />
+          <Slider
+            id="smoothing"
+            label="Smooth out jagged edges"
+            display={smoothing === 0 ? "Off" : `${smoothing} of 10`}
+            help={
+              smoothing === 0
+                ? "Off: edges follow your file exactly, pixel steps included."
+                : "Rounds off the pixel staircase in a low-resolution source. The match score drops on purpose — it is measured against those steps."
+            }
+            min={0}
+            max={10}
+            value={smoothing}
+            onCommit={(value) => onChange({ ...options, smoothing: value })}
           />
           <Slider
             id="despeckle"

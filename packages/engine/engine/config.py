@@ -42,6 +42,13 @@ SCORE_SIMPLIFY_MAX_SIDE = _int("ENGINE_SCORE_SIMPLIFY_MAX_SIDE", 512)
 UPSCALE_THRESHOLD_PX = _int("ENGINE_UPSCALE_THRESHOLD_PX", 600)
 PREPROCESS_SSIM_FLOOR = _float("ENGINE_PREPROCESS_SSIM_FLOOR", 0.85)
 
+# Smoothing (`Options.smoothing`, 0-10) as a blur radius, expressed as a
+# fraction of the trace input's width so a 500 px logo and a 4000 px one
+# smooth by the same visible amount. 1.5% at full strength: measured on a
+# 545 px aliased logo, that is where the stair-steps stop reading as steps.
+# Past it the artwork starts rounding off its own corners.
+SMOOTH_MAX_SIGMA_FRACTION = _float("ENGINE_SMOOTH_MAX_SIGMA_FRACTION", 0.015)
+
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)
 SIMPLIFY_MAX_STEPS = _int("ENGINE_SIMPLIFY_MAX_STEPS", 5)

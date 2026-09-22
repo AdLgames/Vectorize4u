@@ -178,3 +178,30 @@ def test_a_photograph_is_never_called_two_tone():
     )
     picked = candidates_for(_profile("PHOTO", 0.9), Options(), noisy)
     assert {p.engine for p in picked} == {"vtracer"}
+
+
+def test_smoothing_does_not_cost_a_two_tone_logo_its_tracer():
+    """A blur the caller asked for must not answer "what is this artwork".
+
+    Smoothing fills the gap between two tones with every value in between,
+    so the blurred image reads as not-two-tone and potrace is never
+    offered. Measured on the real Batman logo: at smoothing 4 the result
+    fell from one potrace path (494 nodes) to ten vtracer bands, and the
+    score went with it — 0.8266 became 0.5597.
+    """
+    import cv2
+
+    two_tone = _two_tone()
+    blurred = cv2.GaussianBlur(two_tone, (31, 31), 9)
+    picked = candidates_for(_profile(), Options(smoothing=6), blurred, unsmoothed=two_tone)
+    assert "potrace" in {p.engine for p in picked}
+
+
+def test_a_blurred_image_alone_is_not_two_tone():
+    """The other half of the pair above: without the pre-blur image to ask,
+    the gate is right to say no — which is exactly why it is passed one."""
+    import cv2
+
+    blurred = cv2.GaussianBlur(_two_tone(), (31, 31), 9)
+    picked = candidates_for(_profile(), Options(), blurred)
+    assert {p.engine for p in picked} == {"vtracer"}

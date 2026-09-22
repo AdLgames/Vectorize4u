@@ -141,6 +141,7 @@ def candidates_for(
     trace_input: np.ndarray,
     *,
     potrace_available: bool = True,
+    unsmoothed: np.ndarray | None = None,
 ) -> list[Params]:
     if options.forced_params is not None:
         return [options.forced_params]
@@ -169,7 +170,14 @@ def candidates_for(
     # logo was traced only by the colour tracer, which follows each pixel
     # step of an aliased edge. potrace scored higher on the engine's own
     # metric with a quarter of the nodes, and was never offered.
-    bilevel = potrace_available and _is_effectively_bilevel(trace_input)
+    # Asked of the artwork before `Options.smoothing` blurred it. A blur
+    # the caller requested fills the gap between two tones with every value
+    # in between, so a smoothed two-tone logo reads as not-two-tone and
+    # loses the very tracer it most wants — measured: at smoothing 4 the
+    # Batman logo fell from one potrace path to ten vtracer bands.
+    bilevel = potrace_available and _is_effectively_bilevel(
+        trace_input if unsmoothed is None else unsmoothed
+    )
 
     for cls in classes:
         vtracer = VTRACER_PRESETS.get(cls, [])

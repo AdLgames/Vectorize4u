@@ -203,6 +203,16 @@ class Options:
     # because a phone photo of a sign and a clean export need very
     # different amounts of speckle removal, and the difference is visible.
     despeckle: int | None = None
+    # How hard to smooth the pixel staircase before tracing, 0-10.
+    #
+    # A tracer is faithful by construction: given a 545 px logo whose edges
+    # are hard pixel steps, it returns those steps as geometry, and the
+    # score agrees because the steps *are* the source. Nothing in the
+    # candidate search can fix that — every candidate is measured against
+    # the same aliased reference, so the smoother trace always scores
+    # worse. It is a judgement about the artwork, not about the fit, which
+    # is why it is the caller's to make and defaults to off.
+    smoothing: int = 0
     alpha_mode: AlphaMode = "auto"
     output_width: float | None = None
     output_height: float | None = None
