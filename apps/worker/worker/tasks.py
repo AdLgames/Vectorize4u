@@ -266,6 +266,7 @@ def _engine_options(blob: dict[str, Any]) -> Any:
         simplify=blob.get("simplify", True),
         keep_background=blob.get("keep_background", True),
         despeckle=blob.get("despeckle"),
+        smoothing=blob.get("smoothing"),
         alpha_mode=blob.get("alpha_mode", "auto"),
         output_width=blob.get("output_width"),
         output_height=blob.get("output_height"),

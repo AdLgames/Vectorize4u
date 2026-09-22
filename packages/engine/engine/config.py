@@ -42,8 +42,59 @@ SCORE_SIMPLIFY_MAX_SIDE = _int("ENGINE_SCORE_SIMPLIFY_MAX_SIDE", 512)
 UPSCALE_THRESHOLD_PX = _int("ENGINE_UPSCALE_THRESHOLD_PX", 600)
 PREPROCESS_SSIM_FLOOR = _float("ENGINE_PREPROCESS_SSIM_FLOOR", 0.85)
 
+# Smoothing (`Options.smoothing`, 0-10) as a filter window along the
+# contour, as a fraction of the image diagonal so a 500 px logo and a
+# 4000 px one round off by the same visible amount. 3% at full strength:
+# measured on a 545 px aliased logo, below about 1.5% the staircase
+# survives and the corner count wanders with the setting.
+SMOOTH_MAX_WINDOW_FRACTION = _float("ENGINE_SMOOTH_MAX_WINDOW_FRACTION", 0.03)
+# Refit tolerance for the smoothed contour, as a fraction of the diagonal.
+SMOOTH_FIT_TOLERANCE = _float("ENGINE_SMOOTH_FIT_TOLERANCE", 0.0008)
+# Above this many paths, smoothing is refused rather than applied.
+# A banded gradient is hundreds of stacked shapes that share their
+# boundaries; smoothing each contour on its own moves those boundaries
+# independently and they tear apart. Measured on a 460-path gradient
+# logo, the result was a visibly ragged, spiky edge — worse than the
+# banding it was asked to fix. Flat artwork, which is what smoothing is
+# for, is a handful of paths.
+SMOOTH_MAX_PATHS = _int("ENGINE_SMOOTH_MAX_PATHS", 32)
+# Below this much excess turning the outline is not stepped, and
+# smoothing it would only round off artwork. Clean logos measure
+# 0.90-1.03 and the noisiest legitimate artwork 1.81; the aliased
+# files start at 17.4, so the gap is wide and the threshold sits in
+# the middle of it rather than against either edge.
+SMOOTH_AUTO_MIN_TURNS = _float("ENGINE_SMOOTH_AUTO_MIN_TURNS", 6.0)
+
+# Gradient tracing (§3.4). Shaded artwork is split into regions of gently
+# varying colour: inside a region the Lab gradient is small, at its edge it
+# jumps. 90 sits in that gap — measured on a real gradient logo, whose Lab
+# gradient magnitude runs to a median of 0 inside the shading and a 99th
+# percentile of 261 at the boundaries.
+GRADIENT_EDGE_THRESHOLD = _float("ENGINE_GRADIENT_EDGE_THRESHOLD", 60.0)
+# A region smaller than this share of the artwork is detail, not a shape
+# worth its own gradient; it is absorbed by its neighbour instead.
+GRADIENT_MIN_REGION_FRACTION = _float("ENGINE_GRADIENT_MIN_REGION_FRACTION", 0.0005)
+# Below this many regions there is no shading structure to describe, and a
+# single gradient over the whole silhouette destroys the artwork — measured,
+# it erased every internal shape of the logo it was fitted to.
+GRADIENT_MIN_REGIONS = _int("ENGINE_GRADIENT_MIN_REGIONS", 3)
+GRADIENT_STOPS = _int("ENGINE_GRADIENT_STOPS", 12)
+# How much measured fidelity the gradient description may give up to
+# replace a stack of bands. It always gives up some: the bands follow the
+# source pixel for pixel and a dozen stops do not. Measured on a real
+# shaded logo, 0.884 against 0.816 — and on the other side of that trade,
+# 460 shapes and 619 machine defects against 16 shapes and none.
+GRADIENT_FIDELITY_MARGIN = _float("ENGINE_GRADIENT_FIDELITY_MARGIN", 0.10)
+
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)
+# The same check one level down, for subpaths inside a path that is
+# itself large. Two orders of magnitude tighter, because the target is
+# different: a degenerate contour, not a small one. Measured on the
+# benchmark sketch, whose 51 subpaths include 3 of exactly zero area
+# and 17 legitimate strokes between 6.5 and 98 — at the path-level
+# threshold all 20 went and the category lost 0.0557 of its score.
+SLIVER_SUBPATH_AREA_FRACTION = _float("ENGINE_SLIVER_SUBPATH_AREA_FRACTION", 0.000002)
 SIMPLIFY_MAX_STEPS = _int("ENGINE_SIMPLIFY_MAX_STEPS", 5)
 # Above this node count, simplification is skipped entirely. Refitting Bézier
 # runs is superlinear in segment count, and a 170,000-node photo trace is

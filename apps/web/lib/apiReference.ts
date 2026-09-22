@@ -155,6 +155,13 @@ export const OPTIONS: Option[] = [
       "Merges curve runs while the fidelity stays within 2% of the unsimplified trace. Off leaves every node the tracer produced.",
   },
   {
+    name: "smoothing",
+    type: "0\u201310",
+    default: "chosen from the image",
+    detail:
+      "Rounds off the pixel staircase a low-resolution source leaves in the traced outline, so edges come back as curves instead of steps. Omit it and we pick a level from how much the outline turns; send 0 to switch it off. The reported score drops as the level rises, on purpose: it is measured against the steps in your file.",
+  },
+  {
     name: "despeckle",
     type: "0–16",
     default: "4",

@@ -57,6 +57,7 @@ class Warning_(StrEnum):
     SIMPLIFY_STOPPED_EARLY = "simplify_stopped_early"
     SIMPLIFY_SKIPPED_LARGE = "simplify_skipped_large"
     NODE_SPACING_ENFORCED = "node_spacing_enforced"
+    SMOOTHING_SKIPPED_BANDED = "smoothing_skipped_banded"
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,11 @@ class Params:
     that can be stored in `job_candidates.params` and replayed later.
     """
 
-    engine: Literal["vtracer", "potrace"] = "vtracer"
+    # "gradient" is not a subprocess tracer: it is the region-and-gradient
+    # path in `engine.gradient`, which competes as a candidate like any
+    # other so the score decides whether shading is better described by a
+    # stack of bands or by a gradient.
+    engine: Literal["vtracer", "potrace", "gradient"] = "vtracer"
     label: str = ""
     # vtracer
     color_precision: int = 6
@@ -125,6 +130,8 @@ class Params:
         return dataclasses.asdict(self)
 
     def key(self) -> str:
+        if self.engine == "gradient":
+            return f"gradient:{self.label}"
         if self.engine == "potrace":
             return (
                 f"potrace:t{self.threshold}:turd{self.turdsize}:"
@@ -203,6 +210,24 @@ class Options:
     # because a phone photo of a sign and a clean export need very
     # different amounts of speckle removal, and the difference is visible.
     despeckle: int | None = None
+    # How hard to smooth the traced contours, 0-10, or None to let the
+    # engine decide from the trace. Applied in §3.7, in contour space,
+    # where a pixel step and a drawn corner are separable.
+    #
+    # None rather than 0 is the default because the customer who most
+    # needs this is the one who does not know the option exists: a
+    # low-resolution logo came back visibly stepped, and "there is a
+    # slider for that" is not an answer they ever reach. 0 still means
+    # off, explicitly.
+    #
+    # A tracer is faithful by construction: given a 545 px logo whose edges
+    # are hard pixel steps, it returns those steps as geometry, and the
+    # score agrees because the steps *are* the source. Nothing in the
+    # candidate search can fix that — every candidate is measured against
+    # the same aliased reference, so the smoother trace always scores
+    # worse against it. Which is why the level cannot be chosen by the
+    # score, and is chosen instead from how much the traced outline turns.
+    smoothing: int | None = None
     alpha_mode: AlphaMode = "auto"
     output_width: float | None = None
     output_height: float | None = None

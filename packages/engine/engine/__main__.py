@@ -26,6 +26,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--detail", default="balanced", choices=["low", "balanced", "high"])
     p.add_argument("--max-colors", type=int, default=None)
     p.add_argument("--no-simplify", dest="simplify", action="store_false")
+    p.add_argument("--smoothing", type=int, default=0, choices=range(0, 11),
+                   metavar="0-10",
+                   help="blur the pixel staircase before tracing (0 = off)")
     p.add_argument("--alpha-mode", default="auto",
                    choices=["auto", "straight", "premultiplied"])
     p.add_argument("--width", dest="output_width", type=float, default=None,
@@ -49,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         detail=args.detail,
         max_colors=args.max_colors,
         simplify=args.simplify,
+        smoothing=args.smoothing,
         alpha_mode=args.alpha_mode,
         output_width=args.output_width,
         output_height=args.output_height,

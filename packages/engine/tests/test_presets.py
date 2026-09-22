@@ -178,3 +178,4 @@ def test_a_photograph_is_never_called_two_tone():
     )
     picked = candidates_for(_profile("PHOTO", 0.9), Options(), noisy)
     assert {p.engine for p in picked} == {"vtracer"}
+

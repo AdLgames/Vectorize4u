@@ -23,6 +23,12 @@ class JobOptions(BaseModel):
     # despeckle x 3 px. Exposed because a scanned logo and a clean export
     # need very different amounts of it, and the difference is visible.
     despeckle: int = Field(default=4, ge=0, le=16)
+    # "Smooth out jagged edges" in the UI. Rounds off the pixel staircase
+    # a low-resolution source leaves in the traced outline. Omitted means
+    # the engine picks a level from how much the outline turns; 0 means
+    # off. The customer who most needs this is the one who does not know
+    # the option exists, so the default decides for them.
+    smoothing: int | None = Field(default=None, ge=0, le=10)
     alpha_mode: Literal["auto", "straight", "premultiplied"] = "auto"
     output_width: float | None = Field(default=None, gt=0, le=10_000)
     output_height: float | None = Field(default=None, gt=0, le=10_000)

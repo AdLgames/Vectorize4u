@@ -92,3 +92,4 @@ def test_quantize_is_deterministic():
     b, kb = quantize(img, 6)
     assert ka == kb
     assert np.array_equal(a, b)
+

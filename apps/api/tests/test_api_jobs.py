@@ -293,3 +293,40 @@ def test_revoked_key_is_rejected(client, auth, user, logo_png):
         "/v1/account", headers={"Authorization": f"Bearer {created['key']}"}
     )
     assert response.status_code == 401
+
+
+def test_smoothing_is_accepted_and_reaches_the_engine(client, auth, funded, logo_png):
+    """The trade this option makes is deliberate: it rounds off the pixel
+    staircase in the traced outline, so the result is smoother artwork and
+    a *lower* score against the aliased source. Both halves are the point,
+    so both are asserted — against an explicit 0, not against the default,
+    which now chooses a level itself."""
+    off = upload_and_vectorize(client, auth, logo_png, {"format": ["svg"], "smoothing": 0})
+    smoothed = upload_and_vectorize(
+        client, auth, logo_png, {"format": ["svg"], "smoothing": 8}
+    )
+    assert off.status_code == 200, off.text
+    assert smoothed.status_code == 200, smoothed.text
+    assert smoothed.json()["quality"]["nodes"] <= off.json()["quality"]["nodes"]
+
+
+def test_smoothing_defaults_to_the_engine_choosing(client, auth, funded, logo_png):
+    """Omitting the option is not the same as sending 0.
+
+    The customer who most needs smoothing is the one who does not know the
+    option exists — a low-resolution logo comes back stepped and "there is
+    a slider for that" is not an answer they ever reach. So the default
+    decides, and 0 remains available to mean off.
+    """
+    response = upload_and_vectorize(client, auth, logo_png, {"format": ["svg"]})
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "complete"
+
+
+def test_smoothing_is_bounded(client, auth, funded, logo_png):
+    """An unbounded blur radius is a denial-of-service knob: the kernel is
+    derived from it and the cost is quadratic."""
+    response = upload_and_vectorize(
+        client, auth, logo_png, {"format": ["svg"], "smoothing": 99}
+    )
+    assert response.status_code == 422
