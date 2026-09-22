@@ -113,3 +113,52 @@ def test_stops_are_colours_measured_from_the_image():
         offsets = [s.offset for s in gradient.stops]
         assert offsets == sorted(offsets)
         assert offsets[-1] == 1.0
+
+
+def test_a_gradient_trace_is_smoothed_even_when_auto_would_not():
+    """Its contours are polygons traced around a pixel mask, so they are
+    stepped by construction.
+
+    The automatic level is calibrated on tracer output — clean artwork up
+    to 1.81 turns per shape, aliased from 17.4 — and reads a gradient
+    trace at 5.38, inside the gap. So it chose no smoothing at all and the
+    stair-steps shipped to the live site, where they were plainly visible
+    on a phone. Provenance decides this one, not the heuristic.
+    """
+    from engine import config
+    from engine.pipeline import _smoothing_for
+    from engine.smooth import turning_per_shape
+    from engine.types import Candidate, Options, Params
+
+    doc = trace(_shaded())
+    assert doc is not None
+    winner = Candidate(
+        params=Params(engine="gradient", label="gradient-regions"),
+        svg="",
+        score=None,
+        duration_ms=0,
+        exit_status=0,
+    )
+    assert turning_per_shape(doc) < config.SMOOTH_AUTO_MIN_TURNS, (
+        "fixture no longer reproduces the case: its turning is already above "
+        "the automatic threshold, so the floor would not be what is tested"
+    )
+    assert _smoothing_for(Options(), winner, doc) >= config.GRADIENT_SMOOTHING_FLOOR
+
+
+def test_an_explicit_level_still_wins_over_the_floor():
+    """Including 0. A customer who turns smoothing off has turned it off."""
+    from engine.pipeline import _smoothing_for
+    from engine.types import Candidate, Options, Params
+
+    doc = trace(_shaded())
+    assert doc is not None
+    winner = Candidate(
+        params=Params(engine="gradient", label="gradient-regions"),
+        svg="",
+        score=None,
+        duration_ms=0,
+        exit_status=0,
+    )
+    assert _smoothing_for(Options(smoothing=0), winner, doc) == 0
+    assert _smoothing_for(Options(smoothing=3), winner, doc) == 3
