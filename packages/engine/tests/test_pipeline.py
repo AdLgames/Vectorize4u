@@ -109,3 +109,38 @@ def test_timings_cover_every_stage(flat_result):
     assert set(flat_result.timings_ms) >= {
         "ingest", "analyse", "preprocess", "trace", "score", "postprocess", "emit"
     }
+
+
+# -- banding is warned about on the evidence, not on the label -------------
+
+
+def test_banding_is_warned_about_whatever_the_class_was_called():
+    """§0 promises we detect, warn, and do the best banded trace.
+
+    The warning used to fire only when the classifier said LOGO_GRADIENT.
+    A gradient logo it called LOGO_FLAT — which is what happens at the 0.46
+    confidence both real-world images landed on — came back as hundreds of
+    flat colour bands with nothing said about it. What the trace produced
+    is not in doubt the way the label is.
+    """
+    from engine.pipeline import banding_warnings
+
+    assert banding_warnings("LOGO_FLAT", 460) == ["gradients_banded"]
+    assert banding_warnings("LOGO_GRADIENT", 460) == ["gradients_banded"]
+
+
+def test_a_flat_logo_is_not_accused_of_banding():
+    """Single figures are what a clean logo traces to, so the threshold has
+    to sit well above them or every good result carries a scary notice."""
+    from engine.pipeline import banding_warnings
+
+    assert banding_warnings("LOGO_FLAT", 8) == []
+    assert banding_warnings("LOGO_FLAT", 11) == []
+
+
+def test_a_screenshot_is_not_banded_just_because_it_has_many_paths():
+    """A screenshot genuinely is hundreds of rectangles."""
+    from engine.pipeline import banding_warnings
+
+    assert banding_warnings("SCREENSHOT", 3444) == []
+    assert banding_warnings("PHOTO", 90000) == []
