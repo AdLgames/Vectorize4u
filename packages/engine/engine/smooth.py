@@ -205,12 +205,33 @@ def _filter(pts: list[Point], closed: bool, corners: list[bool], window: float) 
     return out
 
 
+def _dedupe(pts: list[Point], closed: bool, epsilon: float) -> list[Point]:
+    """Drop points the filter has collapsed onto one another.
+
+    Smoothing pulls neighbours together, hardest where a run is short and
+    pinned at both ends by corners. Two points that land in the same place
+    make a zero-length segment, which a cutter reports as a degenerate
+    contour and some RIPs refuse outright — found by the machine checks,
+    which counted 3-5 of them per logo where the unsmoothed trace had
+    none.
+    """
+    out: list[Point] = []
+    for p in pts:
+        if not out or math.dist(out[-1], p) > epsilon:
+            out.append(p)
+    if closed and len(out) > 2 and math.dist(out[0], out[-1]) <= epsilon:
+        out.pop()
+    return out
+
+
 def smooth_subpath(sp: SubPath, window: float, tolerance: float) -> SubPath:
     pts = _dense(sp, window / SAMPLES_PER_WINDOW)
     if len(pts) < 4:
         return sp
     corners = _corners(pts, sp.closed, window)
-    moved = _filter(pts, sp.closed, corners, window)
+    moved = _dedupe(_filter(pts, sp.closed, corners, window), sp.closed, tolerance * 0.5)
+    if len(moved) < 4:
+        return sp
     curves = fit_polyline(moved, tolerance)
     if not curves:
         return sp

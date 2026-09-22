@@ -102,3 +102,56 @@ def test_order_layers_does_not_reorder():
     groups = order_layers(doc)
     assert [p.fill for p in doc.paths] == fills
     assert groups == 3
+
+
+def _degenerate(x: float, y: float) -> SubPath:
+    """Three collinear points: a contour enclosing nothing."""
+    return SubPath(
+        start=(x, y),
+        segments=[("L", ((x + 4, y),)), ("L", ((x + 8, y),)), ("L", ((x, y),))],
+        closed=True,
+    )
+
+
+def test_sliver_removal_reaches_inside_a_path():
+    """A path's area is the sum of its subpaths, so a big outline carried
+    its degenerate contours straight through this check.
+
+    Measured on the real Batman trace, which potrace returns as one path:
+    seven of its ten subpaths enclosed exactly zero area, and they shipped
+    in every file. Invisible on screen; a cutter tries to cut all seven.
+    The machine checks went from 14 findings to 0 when they went.
+    """
+    doc = SvgDoc(width=1000, height=1000, paths=[
+        Path(subpaths=[_square(0, 0, 500), _degenerate(10, 10)], fill="#000000"),
+    ])
+    doc, dropped = remove_slivers(doc, [])
+    assert dropped == 1
+    assert len(doc.paths) == 1
+    assert len(doc.paths[0].subpaths) == 1
+
+
+def test_sliver_removal_keeps_small_but_real_subpaths():
+    """The floor one level down is much tighter than the path's, because a
+    small subpath is usually artwork: a sketch is nothing but small
+    strokes. Taking the path-level threshold down here cost the SKETCH
+    category 0.0557 — it deleted 17 real strokes to remove 3 degenerate
+    ones."""
+    doc = SvgDoc(width=1000, height=1000, paths=[
+        Path(subpaths=[_square(0, 0, 500), _square(10, 10, 2)], fill="#000000"),
+    ])
+    doc, dropped = remove_slivers(doc, [])
+    assert dropped == 0
+    assert len(doc.paths[0].subpaths) == 2
+
+
+def test_sliver_removal_spares_a_counter_inside_a_glyph():
+    """The exemption has to apply one level down too, or removing specks
+    starts punching the holes out of letters."""
+    doc = SvgDoc(width=1000, height=1000, paths=[
+        Path(subpaths=[_square(0, 0, 500), _degenerate(10, 10)], fill="#000000"),
+    ])
+    doc, dropped = remove_slivers(doc, [(0.0, 0.0, 50.0, 50.0)])
+    assert dropped == 0
+    assert len(doc.paths[0].subpaths) == 2
+

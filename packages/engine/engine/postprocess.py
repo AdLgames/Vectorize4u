@@ -43,6 +43,12 @@ def _subpath_points(sp: SubPath) -> list[Point]:
     return sp.points()
 
 
+# Below this an area is zero, not small: the shoelace sum of a contour
+# whose points are collinear. Absolute rather than relative to the canvas,
+# because the target is exact degeneracy, not smallness.
+DEGENERATE_AREA = 1e-6
+
+
 def remove_slivers(
     doc: SvgDoc, text_boxes: list[tuple[float, float, float, float]]
 ) -> tuple[SvgDoc, int]:
@@ -51,17 +57,47 @@ def remove_slivers(
     Safe only because every candidate is traced in `stacked` mode: in cutout
     mode these shapes are holes, and deleting them punches through the art.
     """
-    min_area = config.SLIVER_AREA_FRACTION * doc.width * doc.height
+    canvas = doc.width * doc.height
+    min_area = config.SLIVER_AREA_FRACTION * canvas
+    min_subpath_area = config.SLIVER_SUBPATH_AREA_FRACTION * canvas
     kept: list[Path] = []
     dropped = 0
+
+    def worth_keeping(area: float, box: tuple[float, float, float, float], floor: float) -> bool:
+        # small glyph counters are the point, not noise
+        return area >= floor or _in_text_region(box, text_boxes)
+
     for p in doc.paths:
-        if p.area() >= min_area:
+        # Subpaths first. A path's area is the sum of its subpaths, so a
+        # logo whose outline is one path carried its specks through this
+        # check untouched: measured on the real Batman trace, seven of its
+        # ten subpaths were zero-area three-node contours that shipped in
+        # every file. They are invisible on screen, and a cutter tries to
+        # cut all seven.
+        #
+        # The floor here is two orders tighter than the path's, because a
+        # *small* subpath is usually artwork — a sketch's strokes are all
+        # small — while a degenerate one never is.
+        survivors = [
+            sp
+            for sp in p.subpaths
+            if worth_keeping(abs(sp.area()), sp.bbox(), min_subpath_area)
+        ]
+        if not survivors:
+            # The whole path is a sliver. One removal, not one per subpath.
+            if _in_text_region(p.bbox(), text_boxes):
+                kept.append(p)
+            else:
+                dropped += 1
+            continue
+
+        dropped += len(p.subpaths) - len(survivors)
+        p.subpaths = survivors
+        if worth_keeping(p.area(), p.bbox(), min_area):
             kept.append(p)
-            continue
-        if _in_text_region(p.bbox(), text_boxes):
-            kept.append(p)  # small glyph counters are the point, not noise
-            continue
-        dropped += 1
+        else:
+            dropped += 1
+
     doc.paths = kept
     return doc, dropped
 
@@ -151,8 +187,30 @@ def _simplify_subpath(sp: SubPath, epsilon: float, tolerance: float) -> SubPath:
         segments: list[tuple[str, tuple[Point, ...]]] = [
             ("C", (c1, c2, p3)) for _, c1, c2, p3 in fit_polyline(pts, tolerance)
         ]
-        return SubPath(start=pts[0], segments=segments, closed=sp.closed)
-    return _merge_bezier_runs(sp, tolerance)
+        simplified = SubPath(start=pts[0], segments=segments, closed=sp.closed)
+    else:
+        simplified = _merge_bezier_runs(sp, tolerance)
+    return sp if _collapsed(sp, simplified) else simplified
+
+
+def _collapsed(before: SubPath, after: SubPath) -> bool:
+    """Did simplification flatten a contour onto its own axis?
+
+    RDP and the refit both move nodes, and on a contour a couple of units
+    across they can put every point on one line — a shape enclosing zero
+    area. Measured on the real Batman trace, seven subpaths went in with
+    areas of 0.86 to 2.23 and came out at exactly 0.0.
+
+    Deleting the result afterwards is the wrong remedy: shoelace area is
+    zero for a figure-eight too, and on `logo_flat` that removed a whole
+    real path and took fidelity from 0.996 to 0.965. The contour is simply
+    kept unsimplified instead — a few more nodes on a speck is a much
+    smaller price than losing artwork.
+    """
+    original = abs(before.area())
+    if original <= DEGENERATE_AREA:
+        return False  # it was already degenerate; simplification is blameless
+    return abs(after.area()) <= DEGENERATE_AREA
 
 
 def simplify(

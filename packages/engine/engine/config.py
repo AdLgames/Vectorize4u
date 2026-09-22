@@ -61,6 +61,13 @@ SMOOTH_MAX_PATHS = _int("ENGINE_SMOOTH_MAX_PATHS", 32)
 
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)
+# The same check one level down, for subpaths inside a path that is
+# itself large. Two orders of magnitude tighter, because the target is
+# different: a degenerate contour, not a small one. Measured on the
+# benchmark sketch, whose 51 subpaths include 3 of exactly zero area
+# and 17 legitimate strokes between 6.5 and 98 — at the path-level
+# threshold all 20 went and the category lost 0.0557 of its score.
+SLIVER_SUBPATH_AREA_FRACTION = _float("ENGINE_SLIVER_SUBPATH_AREA_FRACTION", 0.000002)
 SIMPLIFY_MAX_STEPS = _int("ENGINE_SIMPLIFY_MAX_STEPS", 5)
 # Above this node count, simplification is skipped entirely. Refitting Bézier
 # runs is superlinear in segment count, and a 170,000-node photo trace is

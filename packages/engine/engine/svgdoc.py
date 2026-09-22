@@ -56,6 +56,14 @@ class SubPath:
             acc += x1 * y2 - x2 * y1
         return abs(acc) / 2.0
 
+    def bbox(self) -> tuple[float, float, float, float]:
+        pts = self.points()
+        if not pts:
+            return (0.0, 0.0, 0.0, 0.0)
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        return (min(xs), min(ys), max(xs), max(ys))
+
     def to_d(self, decimals: int = 2) -> str:
         def f(v: float) -> str:
             s = f"{v:.{decimals}f}".rstrip("0").rstrip(".")

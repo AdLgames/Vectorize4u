@@ -144,3 +144,25 @@ def test_a_screenshot_is_not_banded_just_because_it_has_many_paths():
 
     assert banding_warnings("SCREENSHOT", 3444) == []
     assert banding_warnings("PHOTO", 90000) == []
+
+
+def test_simplification_never_collapses_a_contour(fx):
+    """RDP and the refit both move nodes, and on a contour a couple of
+    units across they can flatten it onto its own axis.
+
+    Measured on the real Batman trace, seven subpaths went into §3.7 with
+    areas of 0.86 to 2.23 and came out at exactly 0.0 — contours enclosing
+    nothing, which render as nothing while a cutter still drives the blade
+    around them. Simplification keeps the original in that case.
+    """
+    from engine.svgdoc import parse_svg
+
+    for name in ("logo_flat", "logo_flat_small", "sketch", "line_art"):
+        doc = parse_svg(run(fx.by_name(name).data, Options(simplify=True)).svg)
+        flat = [
+            f"{pi}.{si}"
+            for pi, p in enumerate(doc.paths)
+            for si, sp in enumerate(p.subpaths)
+            if abs(sp.area()) <= 1e-6
+        ]
+        assert not flat, f"{name} shipped contours enclosing no area: {flat}"
