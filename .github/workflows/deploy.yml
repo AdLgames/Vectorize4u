@@ -82,6 +82,16 @@ on:
         required: false
         type: string
         default: https://vectorize4u.vercel.app
+      preview_origin:
+        description: >-
+          A second origin allowed to upload, for a Vercel preview
+          deployment. Wildcards are allowed, e.g.
+          https://vectorize4u-*-adlgames.vercel.app — a preview URL
+          changes on every push, and the bucket refuses any origin it was
+          not given, which surfaces in the browser as "Failed to fetch"
+          with nothing in any log.
+        required: false
+        default: ""
       confirm_live:
         description: >-
           Only for the stripe stage, and only with a live key. "yes" means
@@ -837,9 +847,18 @@ jobs:
           VEC_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           VEC_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           SITE_URL: ${{ inputs.site }}
+          PREVIEW_ORIGIN: ${{ inputs.preview_origin }}
         run: |
           set -u
-          python ../../infra/r2_cors.py --apply --origin "${SITE_URL%/}"
+          # Every origin in one call, because --apply replaces the whole
+          # policy. Applying the preview origin on its own would silently
+          # revoke production's, and the failure only shows up in a
+          # browser — "Failed to fetch", nothing in any log.
+          origins=(--origin "${SITE_URL%/}")
+          if [ -n "${PREVIEW_ORIGIN}" ]; then
+            origins+=(--origin "${PREVIEW_ORIGIN%/}")
+          fi
+          python ../../infra/r2_cors.py --apply "${origins[@]}"
 
       - name: The retention backstop (§8)
         working-directory: apps/api

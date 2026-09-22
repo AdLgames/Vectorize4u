@@ -365,10 +365,14 @@ def test_the_bucket_lets_a_browser_upload():
     assert "put_bucket_cors" in body
     assert '"PUT"' in body, "the upload is a PUT; allowing GET alone changes nothing"
 
-    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
-    steps = yaml.dump(workflow["jobs"]["r2"]["steps"])
-    assert "r2_cors.py --apply" in steps, "it must be appliable without a terminal"
-    assert "r2_lifecycle.py --apply" in steps, (
+    # Against the file, not against yaml.dump of it: dump re-wraps long
+    # lines at 80 columns and split this very command between "r2_cors.py"
+    # and "--apply", failing on a workflow that was correct.
+    workflow_text = (ROOT / ".github/workflows/deploy.yml").read_text()
+    workflow = yaml.safe_load(workflow_text)
+    assert "r2" in workflow["jobs"]
+    assert "r2_cors.py --apply" in workflow_text, "it must be appliable without a terminal"
+    assert "r2_lifecycle.py --apply" in workflow_text, (
         "the retention backstop is applied by nothing else either"
     )
 
