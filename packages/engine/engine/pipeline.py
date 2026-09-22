@@ -190,8 +190,16 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
     # Offered as one more candidate rather than switched to: it competes on
     # the same score as everything else, so a flat logo it misreads loses
     # to the tracer that read it correctly.
-    with timer("gradient"):
-        scored.extend(_gradient_candidates(pre.trace_input, scorer))
+    #
+    # Attempted only when a band stack is what it would be replacing, which
+    # is the same condition under which it can win. Tried unconditionally it
+    # cost every conversion a connected-components pass and a distance
+    # transform over the full image before declining — measured across the
+    # corpus, median job time went from 4.1s to 6.8s and p95 to 9.1s, which
+    # pushes work past the 8s sync window (§6) for no possible benefit.
+    if _banded(scored):
+        with timer("gradient"):
+            scored.extend(_gradient_candidates(pre.trace_input, scorer))
 
     usable = [c for c in scored if c.score is not None and c.svg is not None]
     if not usable:
@@ -304,6 +312,13 @@ def _min_spacing_px(doc: SvgDoc, profile: ImageProfile, options: Options) -> flo
         return 0.0
     px_per_mm = doc.width / size.width_mm
     return float(options.min_node_spacing_mm * px_per_mm)
+
+
+def _banded(scored: list[Candidate]) -> bool:
+    """Did the tracers come back with a stack of bands?"""
+    return any(
+        c.score is not None and c.score.paths >= BANDING_PATHS for c in scored
+    )
 
 
 def _smoothing_for(options: Options, winner: Candidate, doc: SvgDoc) -> int | None:
