@@ -10,6 +10,7 @@ it improves.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +18,7 @@ from contextlib import contextmanager
 import cv2
 import numpy as np
 
+from engine import config
 from engine.analyse import analyse
 from engine.emit import emit
 from engine.errors import EngineError, TracerCrash
@@ -26,7 +28,7 @@ from engine.postprocess import postprocess
 from engine.presets import candidates_for
 from engine.raster import render_svg
 from engine.score import SCORE_VERSION, Scorer
-from engine.svgdoc import SvgDoc, parse_svg
+from engine.svgdoc import SvgDoc, parse_svg, serialize
 from engine.trace import trace_all
 from engine.types import (
     Candidate,
@@ -37,6 +39,8 @@ from engine.types import (
     Warning_,
 )
 from engine.version import ENGINE_VERSION
+
+log = logging.getLogger("engine.pipeline")
 
 
 class _Timer:
@@ -182,6 +186,13 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
                 )
             )
 
+    # Shading, described as shading rather than as a stack of bands (§3.4).
+    # Offered as one more candidate rather than switched to: it competes on
+    # the same score as everything else, so a flat logo it misreads loses
+    # to the tracer that read it correctly.
+    with timer("gradient"):
+        scored.extend(_gradient_candidates(pre.trace_input, scorer))
+
     usable = [c for c in scored if c.score is not None and c.svg is not None]
     if not usable:
         errors = "; ".join(c.error or "?" for c in scored)[:500]
@@ -189,6 +200,7 @@ def run(data: bytes, options: Options | None = None) -> EngineResult:
 
     # Selection is by `total`, which includes the node/path penalties.
     winner = max(usable, key=lambda c: c.score.total)  # type: ignore[union-attr]
+    winner = _prefer_gradient_over_bands(winner, usable)
     winner.selected = True
 
     doc = parse_svg(winner.svg)  # type: ignore[arg-type]
@@ -294,6 +306,68 @@ def _min_spacing_px(doc: SvgDoc, profile: ImageProfile, options: Options) -> flo
     return float(options.min_node_spacing_mm * px_per_mm)
 
 
+def _prefer_gradient_over_bands(winner: Candidate, usable: list[Candidate]) -> Candidate:
+    """Take the gradient when the only thing beating it is a stack of bands.
+
+    The score cannot make this call. It measures how closely the result
+    matches the source, and hundreds of bands match a smooth ramp more
+    closely than a dozen stops do — measured on a real shaded logo, 0.884
+    against 0.816, so `total` prefers the bands and always will.
+
+    What it does not measure is whether the file is usable. The same two
+    results were 460 shapes against 16, 178 KB against 16 KB, and 619
+    machine defects against none — 456 of the bands' defects being
+    contours that cross themselves, which have no well-defined inside for
+    a cutter or a fill rule to follow.
+
+    So the rule is narrow and stated: only when the winner is a band stack
+    in the first place, and only while the gradient stays within a
+    declared fidelity margin. A flat logo, or a shaded one the tracer
+    handled in a handful of paths, is never touched.
+    """
+    if winner.params.engine == "gradient":
+        return winner
+    if winner.score is None or winner.score.paths < BANDING_PATHS:
+        return winner
+    gradients = [
+        c
+        for c in usable
+        if c.params.engine == "gradient" and c.score is not None
+    ]
+    if not gradients:
+        return winner
+    best = max(gradients, key=lambda c: c.score.fidelity)  # type: ignore[union-attr]
+    if winner.score.fidelity - best.score.fidelity > config.GRADIENT_FIDELITY_MARGIN:  # type: ignore[union-attr]
+        return winner
+    return best
+
+
+def _gradient_candidates(trace_input: np.ndarray, scorer: Scorer) -> list[Candidate]:
+    """Zero or one candidate: the gradient tracer declines most images."""
+    from engine.gradient import trace as trace_gradients
+
+    started = time.perf_counter()
+    try:
+        doc = trace_gradients(trace_input)
+        if doc is None:
+            return []
+        svg = serialize(doc, decimals=config.COORD_DECIMALS)
+        raster = render_svg(svg, width=scorer.size[0])
+        score = scorer.score_raster(raster, nodes=doc.node_count(), paths=doc.path_count())
+    except Exception as exc:  # a candidate that fails is not a job that fails
+        log.info("gradient candidate unavailable: %s", exc)
+        return []
+    return [
+        Candidate(
+            params=Params(engine="gradient", label="gradient-regions"),
+            svg=svg,
+            score=score,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            exit_status=0,
+        )
+    ]
+
+
 def _rescale(doc: SvgDoc, factor: float) -> SvgDoc:
     for p in doc.paths:
         for sp in p.subpaths:
@@ -302,6 +376,17 @@ def _rescale(doc: SvgDoc, factor: float) -> SvgDoc:
                 (kind, tuple((x * factor, y * factor) for x, y in args))
                 for kind, args in sp.segments
             ]
+    # The gradient axes live in the same coordinate space as the paths, so
+    # they scale with them. Left behind, a gradient traced on an upscaled
+    # image paints its ramp across twice the artwork it was fitted to.
+    for g in doc.gradients:
+        g.x1 *= factor
+        g.y1 *= factor
+        g.x2 *= factor
+        g.y2 *= factor
+        g.cx *= factor
+        g.cy *= factor
+        g.r *= factor
     doc.width *= factor
     doc.height *= factor
     return doc

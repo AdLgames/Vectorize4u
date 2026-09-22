@@ -104,7 +104,11 @@ class Params:
     that can be stored in `job_candidates.params` and replayed later.
     """
 
-    engine: Literal["vtracer", "potrace"] = "vtracer"
+    # "gradient" is not a subprocess tracer: it is the region-and-gradient
+    # path in `engine.gradient`, which competes as a candidate like any
+    # other so the score decides whether shading is better described by a
+    # stack of bands or by a gradient.
+    engine: Literal["vtracer", "potrace", "gradient"] = "vtracer"
     label: str = ""
     # vtracer
     color_precision: int = 6
@@ -126,6 +130,8 @@ class Params:
         return dataclasses.asdict(self)
 
     def key(self) -> str:
+        if self.engine == "gradient":
+            return f"gradient:{self.label}"
         if self.engine == "potrace":
             return (
                 f"potrace:t{self.threshold}:turd{self.turdsize}:"

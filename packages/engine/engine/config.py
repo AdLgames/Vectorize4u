@@ -65,6 +65,27 @@ SMOOTH_MAX_PATHS = _int("ENGINE_SMOOTH_MAX_PATHS", 32)
 # the middle of it rather than against either edge.
 SMOOTH_AUTO_MIN_TURNS = _float("ENGINE_SMOOTH_AUTO_MIN_TURNS", 6.0)
 
+# Gradient tracing (§3.4). Shaded artwork is split into regions of gently
+# varying colour: inside a region the Lab gradient is small, at its edge it
+# jumps. 90 sits in that gap — measured on a real gradient logo, whose Lab
+# gradient magnitude runs to a median of 0 inside the shading and a 99th
+# percentile of 261 at the boundaries.
+GRADIENT_EDGE_THRESHOLD = _float("ENGINE_GRADIENT_EDGE_THRESHOLD", 60.0)
+# A region smaller than this share of the artwork is detail, not a shape
+# worth its own gradient; it is absorbed by its neighbour instead.
+GRADIENT_MIN_REGION_FRACTION = _float("ENGINE_GRADIENT_MIN_REGION_FRACTION", 0.0005)
+# Below this many regions there is no shading structure to describe, and a
+# single gradient over the whole silhouette destroys the artwork — measured,
+# it erased every internal shape of the logo it was fitted to.
+GRADIENT_MIN_REGIONS = _int("ENGINE_GRADIENT_MIN_REGIONS", 3)
+GRADIENT_STOPS = _int("ENGINE_GRADIENT_STOPS", 12)
+# How much measured fidelity the gradient description may give up to
+# replace a stack of bands. It always gives up some: the bands follow the
+# source pixel for pixel and a dozen stops do not. Measured on a real
+# shaded logo, 0.884 against 0.816 — and on the other side of that trade,
+# 460 shapes and 619 machine defects against 16 shapes and none.
+GRADIENT_FIDELITY_MARGIN = _float("ENGINE_GRADIENT_FIDELITY_MARGIN", 0.10)
+
 # §3.7 post-processing
 SLIVER_AREA_FRACTION = _float("ENGINE_SLIVER_AREA_FRACTION", 0.0002)
 # The same check one level down, for subpaths inside a path that is

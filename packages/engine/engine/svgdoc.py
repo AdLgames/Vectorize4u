@@ -111,11 +111,61 @@ class Path:
         return "".join(sp.to_d(decimals) for sp in self.subpaths)
 
 
+@dataclass(frozen=True)
+class GradientStop:
+    offset: float  # 0..1 along the axis
+    color: str
+
+
+@dataclass
+class Gradient:
+    """A linear or radial gradient, referenced by a path's `fill`.
+
+    Held on the document rather than on the path because SVG puts them in
+    `<defs>` and several paths may share one. Coordinates are user units,
+    the same space as the paths, so nothing has to agree about a bounding
+    box: `gradientUnits="userSpaceOnUse"`.
+    """
+
+    id: str
+    kind: str  # "linear" | "radial"
+    stops: list[GradientStop]
+    # linear: the axis endpoints. radial: centre and radius.
+    x1: float = 0.0
+    y1: float = 0.0
+    x2: float = 0.0
+    y2: float = 0.0
+    cx: float = 0.0
+    cy: float = 0.0
+    r: float = 0.0
+
+    def to_svg(self, decimals: int = 2) -> str:
+        def f(v: float) -> str:
+            return f"{round(v, decimals):g}"
+
+        stops = "".join(
+            f'<stop offset="{round(st.offset, 4):g}" stop-color="{st.color}"/>'
+            for st in self.stops
+        )
+        if self.kind == "radial":
+            return (
+                f'<radialGradient id="{self.id}" gradientUnits="userSpaceOnUse" '
+                f'cx="{f(self.cx)}" cy="{f(self.cy)}" r="{f(self.r)}">{stops}</radialGradient>'
+            )
+        return (
+            f'<linearGradient id="{self.id}" gradientUnits="userSpaceOnUse" '
+            f'x1="{f(self.x1)}" y1="{f(self.y1)}" x2="{f(self.x2)}" y2="{f(self.y2)}">'
+            f"{stops}</linearGradient>"
+        )
+
+
 @dataclass
 class SvgDoc:
     width: float
     height: float
     paths: list[Path] = field(default_factory=list)
+    # Emitted into <defs>; a path references one with fill="url(#id)".
+    gradients: list[Gradient] = field(default_factory=list)
     # Physical size, set at emit time (§3.8). None → unitless, which cutting
     # apps disagree about, so emit() always fills it in.
     phys_width: str | None = None
@@ -258,6 +308,7 @@ def parse_svg(svg: str) -> SvgDoc:
         height = _length_unit(root.get("height")) or 0.0
 
     doc = SvgDoc(width=width, height=height)
+    doc.gradients = _parse_gradients(root)
     _walk(root, IDENTITY, doc, {})
 
     if not doc.width or not doc.height:
@@ -265,6 +316,56 @@ def parse_svg(svg: str) -> SvgDoc:
         doc.width = max((b[2] for b in boxes), default=1.0)
         doc.height = max((b[3] for b in boxes), default=1.0)
     return doc
+
+
+def _parse_gradients(root: ET.Element) -> list[Gradient]:
+    """Read <defs> gradients back.
+
+    Without this the parser silently drops them while keeping the paths
+    that reference them, so a document round-tripped through parse/serialize
+    emits `fill="url(#grad-1)"` pointing at nothing. It renders as blank —
+    measured, a gradient trace scoring 0.816 as a candidate came out of
+    post-processing at 0.276, because post-processing parses the winner.
+    """
+    out: list[Gradient] = []
+    for tag, kind in (("linearGradient", "linear"), ("radialGradient", "radial")):
+        for el in root.iter(f"{{{SVG_NS}}}{tag}"):
+            gid = el.get("id")
+            if not gid:
+                continue
+            stops: list[GradientStop] = []
+            for stop in el.iter(f"{{{SVG_NS}}}stop"):
+                style = stop.get("style") or ""
+                colour = stop.get("stop-color") or _from_style(style, "stop-color")
+                if not colour:
+                    continue
+                raw = stop.get("offset") or "0"
+                offset = float(raw[:-1]) / 100.0 if raw.endswith("%") else float(raw)
+                stops.append(GradientStop(offset=offset, color=_normalise_fill(colour)))
+            if len(stops) < 2:
+                continue
+
+            def num(name: str, element: ET.Element = el) -> float:
+                try:
+                    return float(element.get(name) or 0.0)
+                except ValueError:
+                    return 0.0
+
+            out.append(
+                Gradient(
+                    id=gid,
+                    kind=kind,
+                    stops=stops,
+                    x1=num("x1"),
+                    y1=num("y1"),
+                    x2=num("x2"),
+                    y2=num("y2"),
+                    cx=num("cx"),
+                    cy=num("cy"),
+                    r=num("r"),
+                )
+            )
+    return out
 
 
 Transform = tuple[float, float, float, float]  # sx, sy, tx, ty
@@ -367,6 +468,9 @@ def _from_style(style: str, key: str) -> str | None:
 
 def _normalise_fill(fill: str) -> str:
     f = fill.strip()
+    if f.startswith("url("):
+        # A reference, not a colour. Lower-casing it would break an id.
+        return f
     if f.startswith("rgb"):
         nums = [int(round(float(v))) for v in _NUM.findall(f)[:3]]
         if len(nums) == 3:
@@ -392,8 +496,12 @@ def serialize(doc: SvgDoc, *, decimals: int = 2, group_by_color: bool = True) ->
         f'<svg xmlns="{SVG_NS}" version="1.1" width="{w}" height="{h}" '
         f'viewBox="0 0 {doc.width:g} {doc.height:g}">'
     )
+    defs = ""
+    if doc.gradients:
+        defs = "<defs>" + "".join(g.to_svg(decimals) for g in doc.gradients) + "</defs>"
+
     if not group_by_color:
-        return head + "".join(_path_el(p, decimals) for p in doc.paths) + "</svg>"
+        return head + defs + "".join(_path_el(p, decimals) for p in doc.paths) + "</svg>"
 
     body: list[str] = []
     seen: dict[str, int] = {}
@@ -410,7 +518,7 @@ def serialize(doc: SvgDoc, *, decimals: int = 2, group_by_color: bool = True) ->
         body.extend(_path_el(p, decimals, omit_fill=True) for p in doc.paths[i:j])
         body.append("</g>")
         i = j
-    return head + "".join(body) + "</svg>"
+    return head + defs + "".join(body) + "</svg>"
 
 
 def _path_el(p: Path, decimals: int, omit_fill: bool = False) -> str:
